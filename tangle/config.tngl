@@ -1,0 +1,21 @@
+# tngl configuration
+# Edit manually or run: tngl setup
+
+# What to do with edges when a file is deleted
+# Options: prompt | delete | preserve
+on_delete: prompt
+
+# Whether to show orphan nodes in the default TUI view
+show_orphans: true
+
+# Auto-update graph.tngl on git operations (requires hook install)
+git_hooks: true
+
+# Preferred editor for `tngl edit` (falls back to $VISUAL, then $EDITOR)
+# editor: nvim
+
+# Warn in `tngl status` when an edge has an empty label/comment
+warn_uncommented_edges: true
+
+# On `tngl update`, tag new files as [orphan] and new folders as [orphan bundle]
+mark_new_as_orphans: false

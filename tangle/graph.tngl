@@ -1,0 +1,182 @@
+[orphan bundle]
+.claude/
+
+src/
+    -> src/main.rs : crate root hosts CLI entrypoint
+
+    src/commands/
+        -> src/commands/mod.rs : command modules live here
+
+        src/commands/edit.rs
+            -> src/tangle.rs : locates graph file
+            -> src/parser/config.rs : resolves configured editor
+
+        src/commands/init.rs
+            -> src/scanner/tree.rs : scans filesystem for bootstrap nodes
+            -> src/parser/graph.rs : writes initial graph file
+            -> src/parser/layout.rs : writes initial layout file
+            -> src/parser/config.rs : writes default config
+            <- src/tangle.rs : path helpers used during init
+
+        src/commands/inspect.rs
+            -> src/parser/graph.rs : reads graph document
+            -> src/graph/model.rs : traverses edge model
+            <- src/commands/mod.rs : re-export inspect
+
+        src/commands/intentionalize_orphans.rs
+            -> src/parser/graph.rs : marks unattended orphans
+
+        src/commands/list.rs
+            -> src/parser/graph.rs : parses graph for listing
+            -> src/graph/model.rs : iterates edge model
+
+        src/commands/mod.rs
+            -- src/main.rs : command registry consumed by CLI
+            -> src/commands/update.rs : re-export update
+            -> src/commands/status.rs : re-export status
+            -> src/commands/inspect.rs : re-export inspect
+            <- src/commands/ : command modules live here
+            <- src/main.rs : dispatches subcommands
+
+        [orphan]
+        src/commands/open.rs
+
+        src/commands/status.rs
+            -> src/scanner/diff.rs : computes disk-vs-graph differences
+            -> src/parser/config.rs : reads status warning settings
+            -> src/parser/graph.rs : resolves intentional tags
+            -> src/graph/model.rs : reports edge state
+            <- src/commands/mod.rs : re-export status
+
+        src/commands/update.rs
+            -> src/scanner/tree.rs : scans repository nodes
+            -> src/scanner/diff.rs : computes add/remove sets
+            -> src/parser/graph.rs : mutates graph document
+            -> src/parser/layout.rs : reconciles layout nodes
+            -> src/parser/config.rs : reads update behavior
+            -> src/graph/model.rs : applies graph mutations
+            <- src/commands/mod.rs : re-export update
+            <- src/tangle.rs : path helpers used during update
+
+        [orphan]
+        src/commands/view.rs
+
+    src/graph/
+        -> src/graph/model.rs : graph types
+
+        src/graph/layout.rs
+            -- src/parser/layout.rs : shared layout semantics
+
+        src/graph/mod.rs
+            -> src/graph/model.rs : exports graph model module
+
+        src/graph/model.rs
+            -- src/parser/graph.rs : semantic graph mirrors doc parser
+            <- src/commands/inspect.rs : traverses edge model
+            <- src/commands/list.rs : iterates edge model
+            <- src/commands/status.rs : reports edge state
+            <- src/commands/update.rs : applies graph mutations
+            <- src/graph/ : graph types
+            <- src/graph/mod.rs : exports graph model module
+            <- src/parser/graph.rs : builds semantic graph model
+
+    [orphan bundle]
+    src/html/
+
+    src/parser/
+        -> src/parser/graph.rs : parsing entrypoint family
+
+        src/parser/config.rs
+            <- src/commands/edit.rs : resolves configured editor
+            <- src/commands/init.rs : writes default config
+            <- src/commands/status.rs : reads status warning settings
+            <- src/commands/update.rs : reads update behavior
+            <- src/parser/mod.rs : re-exports config parser
+
+        src/parser/graph.rs
+            -- src/scanner/diff.rs : path ordering stays consistent
+            -- src/scanner/tree.rs : shares hierarchical path conventions
+            -- src/graph/model.rs : semantic graph mirrors doc parser
+            -> src/graph/model.rs : builds semantic graph model
+            <- src/commands/init.rs : writes initial graph file
+            <- src/commands/inspect.rs : reads graph document
+            <- src/commands/intentionalize_orphans.rs : marks unattended orphans
+            <- src/commands/list.rs : parses graph for listing
+            <- src/commands/status.rs : resolves intentional tags
+            <- src/commands/update.rs : mutates graph document
+            <- src/parser/ : parsing entrypoint family
+            <- src/parser/mod.rs : re-exports graph parser
+
+        src/parser/layout.rs
+            -- src/scanner/diff.rs : uses same hierarchical sort behavior
+            -- src/graph/layout.rs : shared layout semantics
+            <- src/commands/init.rs : writes initial layout file
+            <- src/commands/update.rs : reconciles layout nodes
+            <- src/parser/mod.rs : re-exports layout parser
+
+        src/parser/mod.rs
+            -> src/parser/graph.rs : re-exports graph parser
+            -> src/parser/config.rs : re-exports config parser
+            -> src/parser/layout.rs : re-exports layout parser
+            <- src/main.rs : links parser crate modules
+
+    src/scanner/
+        -> src/scanner/tree.rs : scanner namespace
+
+        src/scanner/diff.rs
+            -- src/scanner/tree.rs : same hierarchical comparator
+            -- src/parser/graph.rs : path ordering stays consistent
+            -- src/parser/layout.rs : uses same hierarchical sort behavior
+            <- src/commands/status.rs : computes disk-vs-graph differences
+            <- src/commands/update.rs : computes add/remove sets
+            <- src/scanner/mod.rs : re-exports diff scanner
+
+        src/scanner/mod.rs
+            -> src/scanner/tree.rs : re-exports tree scanner
+            -> src/scanner/diff.rs : re-exports diff scanner
+            <- src/main.rs : links scanner crate modules
+
+        src/scanner/tree.rs
+            -- src/parser/graph.rs : shares hierarchical path conventions
+            -- src/scanner/diff.rs : same hierarchical comparator
+            <- src/commands/init.rs : scans filesystem for bootstrap nodes
+            <- src/commands/update.rs : scans repository nodes
+            <- src/scanner/ : scanner namespace
+            <- src/scanner/mod.rs : re-exports tree scanner
+
+    [orphan bundle]
+    src/tui/
+
+    src/main.rs
+        -- src/commands/mod.rs : command registry consumed by CLI
+        -> src/commands/mod.rs : dispatches subcommands
+        -> src/parser/mod.rs : links parser crate modules
+        -> src/scanner/mod.rs : links scanner crate modules
+        -> src/tangle.rs : resolves repository root
+        <- src/ : crate root hosts CLI entrypoint
+        <- Cargo.toml : binary target points to crate entrypoint
+
+    src/tangle.rs
+        -> src/commands/init.rs : path helpers used during init
+        -> src/commands/update.rs : path helpers used during update
+        <- src/commands/edit.rs : locates graph file
+        <- src/main.rs : resolves repository root
+
+.gitignore
+    -- README.md : repository hygiene is documented
+
+[orphan]
+Cargo.lock
+
+Cargo.toml
+    -> src/main.rs : binary target points to crate entrypoint
+
+README.md
+    -- tngl-spec.md : docs and spec cross-reference
+    -- .gitignore : repository hygiene is documented
+
+[orphan]
+edit.p
+
+tngl-spec.md
+    -- README.md : docs and spec cross-reference
