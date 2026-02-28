@@ -70,7 +70,7 @@ pub fn action_for_key(key: KeyEvent, text_mode: bool) -> Action {
         KeyCode::Char('k') => Action::Move(Direction::Up),
         KeyCode::Char('l') => Action::MoveRightOrEditLabel,
         KeyCode::Char('c') => Action::StartConnect,
-        KeyCode::Char('x') => Action::StartDetach,
+        KeyCode::Char('m') => Action::StartDetach,
         KeyCode::Char('d') => Action::DeleteEdge,
         KeyCode::Char('t') => Action::ToggleEdgeDirection,
         KeyCode::Char('r') => Action::ReverseEdgeDirection,

@@ -292,9 +292,11 @@ impl AppState {
             .and_then(|idx| self.graph.nodes.get(idx))
             .map(|n| n.path.as_str());
         let connect_preview = self.current_connect_preview();
+        let move_preview = self.current_move_preview();
         let hints = self.hints();
         let delete_mode = self.delete_pick_idx.is_some();
         let create_mode = self.is_create_mode();
+        let move_mode = self.mode == Mode::Detaching;
         let mut collapsed_folders = self
             .collapsed_folders
             .iter()
@@ -323,11 +325,13 @@ impl AppState {
             locked_path,
             details_cursor: self.details_cursor,
             connect_preview,
+            move_preview,
             collapsed_folders: &collapsed_folders,
             bundled_folders: &bundled_folders,
             connection_filter: self.connection_filter,
             delete_mode,
             create_mode,
+            move_mode,
         };
         render::draw(frame, &data);
 
@@ -543,7 +547,7 @@ impl AppState {
                 }
             }
             Mode::Connecting => "CREATE",
-            Mode::Detaching => "Detaching",
+            Mode::Detaching => "MOVE",
             Mode::EditingLabel => "EditingLabel",
         }
     }
@@ -585,7 +589,7 @@ impl AppState {
                 } else if self.delete_pick_idx.is_some() {
                     "DELETE: [j/k/↑↓] edge  [Enter] delete  [Esc/Backspace] cancel".to_string()
                 } else if self.panel_focus == PanelFocus::Details {
-                    "[↑↓] navigate edges  [Enter] reroute/create(+ row)  [d] delete  [Esc/Backspace] tree"
+                    "[↑↓] navigate edges  [d] delete  [m] move  [c] create  [Esc/Backspace] tree"
                         .to_string()
                 } else {
                     format!(
@@ -599,17 +603,8 @@ impl AppState {
                     .to_string()
             }
             Mode::Detaching => {
-                if let Some(detach) = &self.detaching {
-                    if detach.end.is_none() {
-                        "detaching: pick end [s] source or [t] target, [Esc/Backspace] cancel"
-                            .to_string()
-                    } else {
-                        "detaching: move to new node and [Enter], [Esc/Backspace] cancel"
-                            .to_string()
-                    }
-                } else {
-                    "[Esc/Backspace] cancel".to_string()
-                }
+                "MOVE: [↑/↓] target  [←/→] type  [Enter] apply  [Esc/Backspace] cancel"
+                    .to_string()
             }
             Mode::EditingLabel => {
                 "typing label: [Backspace] delete  [Enter] apply  [Esc] cancel".to_string()
@@ -618,7 +613,9 @@ impl AppState {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
-        let preserve_status = self.delete_pick_idx.is_some() || self.mode == Mode::Connecting;
+        let preserve_status = self.delete_pick_idx.is_some()
+            || self.mode == Mode::Connecting
+            || self.mode == Mode::Detaching;
         if !preserve_status {
             self.status_message = None;
         }
@@ -652,30 +649,12 @@ impl AppState {
             return self.handle_connecting_action(action, key);
         }
 
-        if self.mode == Mode::Normal && self.panel_focus == PanelFocus::Details {
-            return self.handle_details_action(action, key);
+        if self.mode == Mode::Detaching {
+            return self.handle_detaching_action(action, key);
         }
 
-        if self.mode == Mode::Detaching
-            && let Some(detach) = &mut self.detaching
-            && detach.end.is_none()
-        {
-            match key.code {
-                KeyCode::Char('s') => {
-                    detach.end = Some(DetachEnd::Source);
-                    self.status_message = Some("detach mode: source end selected".to_string());
-                }
-                KeyCode::Char('t') => {
-                    detach.end = Some(DetachEnd::Target);
-                    self.status_message = Some("detach mode: target end selected".to_string());
-                }
-                KeyCode::Esc | KeyCode::Backspace => {
-                    self.mode = Mode::Normal;
-                    self.detaching = None;
-                }
-                _ => {}
-            }
-            return Ok(false);
+        if self.mode == Mode::Normal && self.panel_focus == PanelFocus::Details {
+            return self.handle_details_action(action, key);
         }
 
         match action {
@@ -714,8 +693,8 @@ impl AppState {
                 self.start_connect_mode();
             }
             Action::StartDetach => {
-                self.cancel_delete_pick();
-                self.start_detach_mode();
+                self.status_message =
+                    Some("open DETAILS and press [m] on an edge to MOVE".to_string());
             }
             Action::DeleteEdge => self.enter_delete_pick(),
             Action::Activate => {
@@ -1020,8 +999,6 @@ impl AppState {
             self.details_cursor = 0;
             self.selected_edge = None;
             self.status_message = Some("details panel active for focused node".to_string());
-        } else {
-            self.activate_details_cursor();
         }
         Ok(())
     }
@@ -1072,44 +1049,6 @@ impl AppState {
         }
     }
 
-    fn activate_details_cursor(&mut self) {
-        let Some(source_idx) = self.locked_node else {
-            self.panel_focus = PanelFocus::Tree;
-            return;
-        };
-        let tangles = self.tangles_for_anchor(source_idx);
-        if self.details_cursor < tangles.len() {
-            self.start_reroute_from_details_cursor();
-            return;
-        }
-        self.start_connect_mode();
-    }
-
-    fn start_reroute_from_details_cursor(&mut self) {
-        let Some(anchor_idx) = self.locked_node else {
-            return;
-        };
-        let tangles = self.tangles_for_anchor(anchor_idx);
-        let Some(selection) = tangles.get(self.details_cursor).cloned() else {
-            return;
-        };
-        let end = if selection.source_idx == anchor_idx {
-            DetachEnd::Target
-        } else {
-            DetachEnd::Source
-        };
-        self.selected_edge = Some(selection.clone());
-        self.mode = Mode::Detaching;
-        self.panel_focus = PanelFocus::Tree;
-        self.detaching = Some(DetachContext {
-            source_idx: selection.source_idx,
-            edge_idx: selection.edge_idx,
-            end: Some(end),
-        });
-        self.status_message =
-            Some("reroute: move to new node and press Enter (Esc/Backspace cancels)".to_string());
-    }
-
     fn begin_connect_comment_prompt(&mut self) {
         let Some(draft) = self.connect_draft.clone() else {
             return;
@@ -1148,13 +1087,11 @@ impl AppState {
             Action::Move(Direction::Down) => {
                 let max = self
                     .locked_node
-                    .map(|idx| self.tangles_for_anchor(idx).len())
+                    .map(|idx| self.tangles_for_anchor(idx).len().saturating_sub(1))
                     .unwrap_or(0);
                 self.details_cursor = (self.details_cursor + 1).min(max);
             }
-            Action::Activate => {
-                self.activate_details_cursor();
-            }
+            Action::Activate => {}
             Action::Cancel => {
                 self.panel_focus = PanelFocus::Tree;
                 self.locked_node = None;
@@ -1162,6 +1099,7 @@ impl AppState {
                 self.selected_edge = None;
             }
             Action::StartConnect => self.start_connect_mode(),
+            Action::StartDetach => self.start_move_mode_from_details_cursor(),
             Action::DeleteEdge => self.delete_edge_at_details_cursor(),
             Action::MoveRightOrEditLabel => self.start_edit_selected_edge_label(),
             Action::ToggleEdgeDirection => self.toggle_selected_edge_direction()?,
@@ -1182,7 +1120,6 @@ impl AppState {
             | Action::InputChar(_)
             | Action::Move(Direction::Left)
             | Action::Move(Direction::Right)
-            | Action::StartDetach
             | Action::AddNode
             | Action::EditNode
             | Action::NextNode
@@ -1197,6 +1134,51 @@ impl AppState {
             self.locked_node = None;
             self.details_cursor = 0;
             self.selected_edge = None;
+        }
+        Ok(false)
+    }
+
+    fn handle_detaching_action(&mut self, action: Action, key: KeyEvent) -> Result<bool> {
+        match action {
+            Action::Quit => return Ok(true),
+            Action::ToggleHelp => {
+                self.show_help = !self.show_help;
+            }
+            Action::Move(Direction::Up) => self.move_or_pan(Direction::Up),
+            Action::Move(Direction::Down) => self.move_or_pan(Direction::Down),
+            Action::Move(Direction::Left) => self.cycle_detach_kind(-1),
+            Action::Move(Direction::Right) => self.cycle_detach_kind(1),
+            Action::MoveRightOrEditLabel => self.cycle_detach_kind(1),
+            Action::Activate => self.apply_detach()?,
+            Action::Cancel => {
+                self.mode = Mode::Normal;
+                self.detaching = None;
+            }
+            Action::Noop
+            | Action::SubmitText
+            | Action::Backspace
+            | Action::InputChar(_)
+            | Action::StartConnect
+            | Action::StartDetach
+            | Action::DeleteEdge
+            | Action::ToggleEdgeDirection
+            | Action::ReverseEdgeDirection
+            | Action::AddNode
+            | Action::EditNode
+            | Action::DeleteNode
+            | Action::ToggleOrphans
+            | Action::CycleConnectionFilter
+            | Action::OpenSettings
+            | Action::ToggleCollapse
+            | Action::ToggleBundle
+            | Action::NextNode
+            | Action::ZoomIn
+            | Action::ZoomOut => {}
+        }
+
+        if matches!(key.code, KeyCode::Esc | KeyCode::Backspace) {
+            self.mode = Mode::Normal;
+            self.detaching = None;
         }
         Ok(false)
     }
@@ -1273,6 +1255,24 @@ impl AppState {
         draft.kind = kinds[next].clone();
     }
 
+    fn cycle_detach_kind(&mut self, delta: i32) {
+        let Some(detach) = &self.detaching else {
+            return;
+        };
+        let Some(edge) = self
+            .graph
+            .nodes
+            .get_mut(detach.source_idx)
+            .and_then(|n| n.edges.get_mut(detach.edge_idx))
+        else {
+            return;
+        };
+        let kinds = [EdgeKind::Incoming, EdgeKind::Directed, EdgeKind::Undirected];
+        let current = kinds.iter().position(|k| *k == edge.kind).unwrap_or(1) as i32;
+        let next = (current + delta).rem_euclid(kinds.len() as i32) as usize;
+        edge.kind = kinds[next].clone();
+    }
+
     fn current_connect_preview(&self) -> Option<ConnectPreview<'_>> {
         if let Some(draft) = &self.connect_draft
             && let (Some(source), Some(target)) = (
@@ -1309,23 +1309,80 @@ impl AppState {
         None
     }
 
-    fn start_detach_mode(&mut self) {
-        let Some(sel) = self.ensure_edge_selection() else {
-            self.status_message = Some("no edge to detach".to_string());
+    fn current_move_preview(&self) -> Option<ConnectPreview<'_>> {
+        if self.mode != Mode::Detaching {
+            return None;
+        }
+        let detach = self.detaching.as_ref()?;
+        let source_node = self.graph.nodes.get(detach.source_idx)?;
+        let edge = source_node.edges.get(detach.edge_idx)?;
+        let focus_node = self.graph.nodes.get(self.focused_node)?;
+        let end = detach.end?;
+
+        let (source, target) = match end {
+            DetachEnd::Source => (focus_node.path.as_str(), edge.target.as_str()),
+            DetachEnd::Target => (source_node.path.as_str(), focus_node.path.as_str()),
+        };
+
+        Some(ConnectPreview {
+            source,
+            target,
+            kind: edge.kind.clone(),
+        })
+    }
+
+    fn start_move_mode_from_details_cursor(&mut self) {
+        let Some(anchor_idx) = self.locked_node else {
+            self.status_message = Some("no details node selected".to_string());
             return;
         };
+        let tangles = self.tangles_for_anchor(anchor_idx);
+        let Some(selection) = tangles.get(self.details_cursor).cloned() else {
+            self.status_message = Some("no edge at cursor".to_string());
+            return;
+        };
+        let Some(edge) = self
+            .graph
+            .nodes
+            .get(selection.source_idx)
+            .and_then(|n| n.edges.get(selection.edge_idx))
+            .cloned()
+        else {
+            self.status_message = Some("edge no longer exists".to_string());
+            return;
+        };
+        let end = if selection.source_idx == anchor_idx {
+            DetachEnd::Target
+        } else {
+            DetachEnd::Source
+        };
+        let current_endpoint_focus = match end {
+            DetachEnd::Source => selection.source_idx,
+            DetachEnd::Target => self
+                .graph
+                .nodes
+                .iter()
+                .position(|n| n.path == edge.target)
+                .unwrap_or(self.focused_node),
+        };
+        self.focused_node = current_endpoint_focus;
+        self.selected_edge = Some(selection.clone());
         self.mode = Mode::Detaching;
+        self.panel_focus = PanelFocus::Tree;
         self.detaching = Some(DetachContext {
-            source_idx: sel.source_idx,
-            edge_idx: sel.edge_idx,
-            end: None,
+            source_idx: selection.source_idx,
+            edge_idx: selection.edge_idx,
+            end: Some(end),
         });
+        self.status_message =
+            Some("MOVE: choose new node, adjust type with ←/→, then Enter".to_string());
     }
 
     fn apply_detach(&mut self) -> Result<()> {
         let Some(detach) = self.detaching.clone() else {
             return Ok(());
         };
+        let inspected_idx = self.locked_node;
         let Some(source_node) = self.graph.nodes.get(detach.source_idx) else {
             self.mode = Mode::Normal;
             self.detaching = None;
@@ -1336,44 +1393,76 @@ impl AppState {
             self.detaching = None;
             return Ok(());
         };
-        let focus_path = self
+        let Some(focus_node) = self.graph.nodes.get(self.focused_node) else {
+            self.status_message = Some("invalid move target".to_string());
+            return Ok(());
+        };
+        let focus_path = focus_node.path.clone();
+        let current_source_path = source_node.path.clone();
+        let current_target_path = edge.target.clone();
+
+        let (new_source_path, new_target_path) = match detach.end {
+            Some(DetachEnd::Source) => (focus_path.clone(), current_target_path.clone()),
+            Some(DetachEnd::Target) => (current_source_path.clone(), focus_path.clone()),
+            None => return Ok(()),
+        };
+
+        if new_source_path == new_target_path {
+            self.status_message = Some("cannot move edge endpoint onto itself".to_string());
+            return Ok(());
+        }
+
+        if new_source_path == current_source_path && new_target_path == current_target_path {
+            self.mode = Mode::Normal;
+            self.detaching = None;
+            self.return_to_inspected_tree_node(inspected_idx);
+            self.status_message = Some("move unchanged".to_string());
+            return Ok(());
+        }
+
+        let Some(new_source_idx) = self
             .graph
             .nodes
-            .get(self.focused_node)
-            .map(|n| n.path.clone())
-            .unwrap_or_default();
+            .iter()
+            .position(|n| n.path == new_source_path)
+        else {
+            self.status_message = Some("invalid move source".to_string());
+            return Ok(());
+        };
 
         self.remove_edge_by_index(detach.source_idx, detach.edge_idx);
-        match detach.end {
-            Some(DetachEnd::Source) => {
-                if let Some(new_source) = self.graph.nodes.get_mut(self.focused_node) {
-                    new_source.edges.push(edge.clone());
-                    self.selected_edge = Some(SelectionEdge {
-                        source_idx: self.focused_node,
-                        edge_idx: new_source.edges.len().saturating_sub(1),
-                    });
-                }
-                self.status_message = Some(format!("edge source moved to {}", focus_path));
-            }
-            Some(DetachEnd::Target) => {
-                if let Some(source) = self.graph.nodes.get_mut(detach.source_idx) {
-                    let mut moved = edge.clone();
-                    moved.target = focus_path.clone();
-                    source.edges.push(moved);
-                    self.selected_edge = Some(SelectionEdge {
-                        source_idx: detach.source_idx,
-                        edge_idx: source.edges.len().saturating_sub(1),
-                    });
-                }
-                self.status_message = Some(format!("edge target moved to {}", focus_path));
-            }
-            None => {}
+        if let Some(new_source) = self.graph.nodes.get_mut(new_source_idx) {
+            let mut moved = edge.clone();
+            moved.target = new_target_path;
+            new_source.edges.push(moved);
+            self.selected_edge = Some(SelectionEdge {
+                source_idx: new_source_idx,
+                edge_idx: new_source.edges.len().saturating_sub(1),
+            });
         }
+        self.status_message = Some(match detach.end {
+            Some(DetachEnd::Source) => format!("edge source moved to {}", focus_path),
+            Some(DetachEnd::Target) => format!("edge target moved to {}", focus_path),
+            None => "edge moved".to_string(),
+        });
 
         self.mode = Mode::Normal;
         self.detaching = None;
+        self.return_to_inspected_tree_node(inspected_idx);
         self.persist_graph()?;
         Ok(())
+    }
+
+    fn return_to_inspected_tree_node(&mut self, inspected_idx: Option<usize>) {
+        if let Some(idx) = inspected_idx
+            && idx < self.graph.nodes.len()
+        {
+            self.focused_node = idx;
+        }
+        self.panel_focus = PanelFocus::Tree;
+        self.locked_node = None;
+        self.details_cursor = 0;
+        self.selected_edge = None;
     }
 
     fn enter_delete_pick(&mut self) {
@@ -2195,7 +2284,7 @@ impl AppState {
             self.details_cursor = 0;
             return;
         };
-        let max = self.tangles_for_anchor(anchor_idx).len();
+        let max = self.tangles_for_anchor(anchor_idx).len().saturating_sub(1);
         if self.details_cursor > max {
             self.details_cursor = max;
         }
@@ -2671,6 +2760,7 @@ fn total_link_count(graph: &Graph, incoming_counts: &HashMap<&str, usize>, path:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn node_index(app: &AppState, path: &str) -> usize {
         app.graph
@@ -2956,5 +3046,239 @@ consumer.rs
         );
         let merged_graph = graph::to_graph(&graph::parse(&merged).unwrap()).unwrap();
         assert_eq!(merged_graph, g);
+    }
+
+    #[test]
+    fn enter_in_details_mode_is_noop() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+        app.detaching = None;
+        app.connect_draft = None;
+
+        let quit = app
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!quit);
+        assert_eq!(app.panel_focus, PanelFocus::Details);
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.locked_node, Some(anchor_idx));
+        assert!(app.detaching.is_none());
+        assert!(app.connect_draft.is_none());
+    }
+
+    #[test]
+    fn m_in_details_enters_move_mode() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+
+        let quit = app
+            .handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!quit);
+        assert_eq!(app.mode, Mode::Detaching);
+        assert_eq!(app.panel_focus, PanelFocus::Tree);
+        assert!(app.detaching.is_some());
+        assert!(app.selected_edge.is_some());
+    }
+
+    #[test]
+    fn move_mode_starts_on_current_endpoint_position() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+
+        let detach = app
+            .detaching
+            .clone()
+            .expect("detaching context should exist");
+        let edge = app.graph.nodes[detach.source_idx].edges[detach.edge_idx].clone();
+        let expected_focus_idx = match detach.end {
+            Some(DetachEnd::Source) => detach.source_idx,
+            Some(DetachEnd::Target) => app
+                .graph
+                .nodes
+                .iter()
+                .position(|n| n.path == edge.target)
+                .expect("target node should exist"),
+            None => panic!("move mode should set moved endpoint"),
+        };
+        assert_eq!(
+            app.focused_node, expected_focus_idx,
+            "MOVE should start focused on the currently connected endpoint"
+        );
+    }
+
+    #[test]
+    fn move_mode_left_right_cycles_edge_type() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+
+        let selection = app.selected_edge.clone().expect("edge should be selected");
+        let before = app.graph.nodes[selection.source_idx].edges[selection.edge_idx]
+            .kind
+            .clone();
+
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+            .unwrap();
+        let after_right = app.graph.nodes[selection.source_idx].edges[selection.edge_idx]
+            .kind
+            .clone();
+        assert_ne!(after_right, before);
+
+        app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+            .unwrap();
+        let after_left = app.graph.nodes[selection.source_idx].edges[selection.edge_idx]
+            .kind
+            .clone();
+        assert_eq!(after_left, before);
+    }
+
+    #[test]
+    fn move_mode_preview_tracks_focused_node() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+        let first_target = app
+            .current_move_preview()
+            .map(|p| p.target.to_string())
+            .expect("move preview should be available");
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        let second_target = app
+            .current_move_preview()
+            .map(|p| p.target.to_string())
+            .expect("move preview should remain available");
+
+        assert_ne!(
+            first_target, second_target,
+            "move preview should track focused tree node while moving"
+        );
+    }
+
+    #[test]
+    fn move_mode_rejects_self_loop_target() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.details_cursor = 0;
+        app.mode = Mode::Normal;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+
+        let detach = app
+            .detaching
+            .clone()
+            .expect("detaching context should exist");
+        let edge = app.graph.nodes[detach.source_idx].edges[detach.edge_idx].clone();
+        let self_loop_focus_idx = match detach.end {
+            Some(DetachEnd::Source) => app
+                .graph
+                .nodes
+                .iter()
+                .position(|n| n.path == edge.target)
+                .expect("target node should exist"),
+            Some(DetachEnd::Target) => detach.source_idx,
+            None => panic!("move mode should set moved endpoint"),
+        };
+        app.focused_node = self_loop_focus_idx;
+
+        let before = app.graph.clone();
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.graph, before, "self-loop move should not mutate graph");
+        assert_eq!(app.mode, Mode::Detaching, "MOVE should remain active");
+        assert!(
+            app.status_message
+                .as_deref()
+                .unwrap_or("")
+                .contains("cannot move edge endpoint onto itself"),
+            "user should get explicit self-loop rejection"
+        );
+    }
+
+    #[test]
+    fn finalize_move_clears_details_lock_and_returns_focus_to_anchor() {
+        let mut app = AppState::load(true, false).unwrap();
+        let anchor_idx = node_index(&app, "src/main.rs");
+        let new_target_idx = node_index(&app, "src/graph/model.rs");
+
+        app.focused_node = anchor_idx;
+        app.locked_node = Some(anchor_idx);
+        app.panel_focus = PanelFocus::Details;
+        app.mode = Mode::Normal;
+
+        let tangles = app.tangles_for_anchor(anchor_idx);
+        let details_idx = tangles
+            .iter()
+            .position(|sel| {
+                app.graph
+                    .nodes
+                    .get(sel.source_idx)
+                    .and_then(|n| n.edges.get(sel.edge_idx))
+                    .map(|e| {
+                        sel.source_idx == anchor_idx && e.target != app.graph.nodes[anchor_idx].path
+                    })
+                    .unwrap_or(false)
+            })
+            .expect("expected an outgoing edge for anchor node");
+        app.details_cursor = details_idx;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            .unwrap();
+        app.focused_node = new_target_idx;
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+
+        assert_eq!(app.mode, Mode::Normal);
+        assert!(app.detaching.is_none());
+        assert_eq!(app.panel_focus, PanelFocus::Tree);
+        assert!(app.locked_node.is_none(), "details lock should be cleared");
+        assert_eq!(
+            app.focused_node, anchor_idx,
+            "focus should return to inspected node"
+        );
+        assert!(
+            app.selected_edge.is_none(),
+            "edge selection should be cleared after finalize"
+        );
     }
 }
