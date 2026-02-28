@@ -24,7 +24,6 @@ pub struct Config {
     pub git_hooks: bool,
     pub editor: Option<String>,
     pub warn_uncommented_edges: bool,
-    pub mark_new_as_orphans: bool,
 }
 
 impl Default for Config {
@@ -36,7 +35,6 @@ impl Default for Config {
             git_hooks: true,
             editor: None,
             warn_uncommented_edges: true,
-            mark_new_as_orphans: false,
         }
     }
 }
@@ -67,9 +65,6 @@ git_hooks: true
 
 # Warn in `tngl status` when an edge has an empty label/comment
 warn_uncommented_edges: true
-
-# On `tngl update`, tag new files and folders as [orphan]
-mark_new_as_orphans: false
 ";
 
 // ---------------------------------------------------------------------------
@@ -121,9 +116,6 @@ pub fn parse(input: &str) -> Result<Config> {
             "warn_uncommented_edges" => {
                 config.warn_uncommented_edges = parse_bool(value, line_num + 1)?;
             }
-            "mark_new_as_orphans" => {
-                config.mark_new_as_orphans = parse_bool(value, line_num + 1)?;
-            }
             _ => {
                 // Unknown keys are silently ignored.
             }
@@ -171,7 +163,6 @@ mod tests {
         assert!(cfg.git_hooks);
         assert_eq!(cfg.editor, None);
         assert!(cfg.warn_uncommented_edges);
-        assert!(!cfg.mark_new_as_orphans);
     }
 
     #[test]
@@ -183,7 +174,6 @@ mod tests {
         assert!(cfg.git_hooks);
         assert_eq!(cfg.editor, None);
         assert!(cfg.warn_uncommented_edges);
-        assert!(!cfg.mark_new_as_orphans);
     }
 
     #[test]
@@ -208,12 +198,6 @@ mod tests {
     fn parses_warn_uncommented_edges_false() {
         let cfg = parse("warn_uncommented_edges: false\n").unwrap();
         assert!(!cfg.warn_uncommented_edges);
-    }
-
-    #[test]
-    fn parses_mark_new_as_orphans_true() {
-        let cfg = parse("mark_new_as_orphans: true\n").unwrap();
-        assert!(cfg.mark_new_as_orphans);
     }
 
     #[test]
