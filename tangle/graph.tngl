@@ -6,9 +6,6 @@
 
 src/
     -> src/main.rs : crate root hosts CLI entrypoint
-    -> src/ : Something here!
-    -> src/ :
-    <- src/ : Something here!
 
     src/commands/
         -> src/commands/mod.rs : command modules live here
@@ -20,7 +17,6 @@ src/
         src/commands/init.rs
             -> src/scanner/tree.rs : scans filesystem for bootstrap nodes
             -> src/parser/graph.rs : writes initial graph file
-            -> src/parser/layout.rs : writes initial layout file
             -> src/parser/config.rs : writes default config
             <- src/tangle.rs : path helpers used during init
 
@@ -41,7 +37,7 @@ src/
             -> src/commands/update.rs : re-export update
             -> src/commands/status.rs : re-export status
             -> src/commands/inspect.rs : re-export inspect
-            -> src/commands/view.rs : A comment about something that connects these two
+            -> src/commands/view.rs : re-export view
             <- src/commands/ : command modules live here
             <- src/main.rs : dispatches subcommands
 
@@ -54,26 +50,22 @@ src/
             -> src/parser/graph.rs : resolves intentional tags
             -> src/graph/model.rs : reports edge state
             <- src/commands/mod.rs : re-export status
-            <- README.md :
+            <- README.md : docs reference
 
         src/commands/update.rs
             -> src/scanner/tree.rs : scans repository nodes
             -> src/scanner/diff.rs : computes add/remove sets
             -> src/parser/graph.rs : mutates graph document
-            -> src/parser/layout.rs : reconciles layout nodes
             -> src/parser/config.rs : reads update behavior
             -> src/graph/model.rs : applies graph mutations
             <- src/commands/mod.rs : re-export update
             <- src/tangle.rs : path helpers used during update
-            <- README.md :
+            <- README.md : docs reference
 
         src/commands/view.rs
 
     src/graph/
         -> src/graph/model.rs : graph types
-
-        src/graph/layout.rs
-            -- src/parser/layout.rs : shared layout semantics
 
         src/graph/mod.rs
             -> src/graph/model.rs : exports graph model module
@@ -87,15 +79,6 @@ src/
             <- src/graph/ : graph types
             <- src/graph/mod.rs : exports graph model module
             <- src/parser/graph.rs : builds semantic graph model
-
-    [orphan]
-    src/html/
-
-        [orphan]
-        src/html/export.rs
-
-        [orphan]
-        src/html/mod.rs
 
     src/parser/
         -> src/parser/graph.rs : parsing entrypoint family
@@ -121,17 +104,9 @@ src/
             <- src/parser/ : parsing entrypoint family
             <- src/parser/mod.rs : re-exports graph parser
 
-        src/parser/layout.rs
-            -- src/scanner/diff.rs : uses same hierarchical sort behavior
-            -- src/graph/layout.rs : shared layout semantics
-            <- src/commands/init.rs : writes initial layout file
-            <- src/commands/update.rs : reconciles layout nodes
-            <- src/parser/mod.rs : re-exports layout parser
-
         src/parser/mod.rs
             -> src/parser/graph.rs : re-exports graph parser
             -> src/parser/config.rs : re-exports config parser
-            -> src/parser/layout.rs : re-exports layout parser
             <- src/main.rs : links parser crate modules
 
     src/scanner/
@@ -140,7 +115,6 @@ src/
         src/scanner/diff.rs
             -- src/scanner/tree.rs : same hierarchical comparator
             -- src/parser/graph.rs : path ordering stays consistent
-            -- src/parser/layout.rs : uses same hierarchical sort behavior
             <- src/commands/status.rs : computes disk-vs-graph differences
             <- src/commands/update.rs : computes add/remove sets
             <- src/scanner/mod.rs : re-exports diff scanner
@@ -203,8 +177,8 @@ Cargo.toml
 README.md
     -- tngl-spec.md : docs and spec cross-reference
     -- .gitignore : repository hygiene is documented
-    -> src/commands/status.rs :
-    -> src/commands/update.rs :
+    -> src/commands/status.rs : docs reference
+    -> src/commands/update.rs : docs reference
 
 tngl-spec.md
     -- README.md : docs and spec cross-reference

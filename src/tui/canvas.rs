@@ -810,13 +810,13 @@ impl AppState {
                 }
             }
             Action::Backspace => {
-                if let Some(prompt) = &mut self.pending_text {
-                    if prompt.cursor > 0 {
-                        let from = byte_index_for_cursor(&prompt.buffer, prompt.cursor - 1);
-                        let to = byte_index_for_cursor(&prompt.buffer, prompt.cursor);
-                        prompt.buffer.replace_range(from..to, "");
-                        prompt.cursor = prompt.cursor.saturating_sub(1);
-                    }
+                if let Some(prompt) = &mut self.pending_text
+                    && prompt.cursor > 0
+                {
+                    let from = byte_index_for_cursor(&prompt.buffer, prompt.cursor - 1);
+                    let to = byte_index_for_cursor(&prompt.buffer, prompt.cursor);
+                    prompt.buffer.replace_range(from..to, "");
+                    prompt.cursor = prompt.cursor.saturating_sub(1);
                 }
             }
             Action::InputChar(c) => {
@@ -2538,8 +2538,10 @@ fn demo_graph() -> (Graph, HashMap<String, (i32, i32)>, config::Config) {
     pos.insert("tests/tui/".to_string(), (260, 440));
     pos.insert("tests/tui/test_navigation.rs".to_string(), (450, 470));
 
-    let mut cfg = config::Config::default();
-    cfg.show_orphans = true;
+    let cfg = config::Config {
+        show_orphans: true,
+        ..config::Config::default()
+    };
     (graph, pos, cfg)
 }
 

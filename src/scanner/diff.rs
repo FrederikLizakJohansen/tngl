@@ -14,7 +14,7 @@ pub struct GraphDiff {
 }
 
 impl GraphDiff {
-    #[allow(dead_code)] // used in tests; available for future command use
+    #[cfg(test)]
     pub fn is_clean(&self) -> bool {
         self.untracked.is_empty() && self.missing.is_empty()
     }
@@ -83,9 +83,7 @@ fn path_components(path: &str) -> (Vec<&str>, bool) {
 }
 
 fn component_kind(idx: usize, len: usize, is_dir: bool) -> u8 {
-    if idx < len.saturating_sub(1) {
-        0
-    } else if is_dir {
+    if idx < len.saturating_sub(1) || is_dir {
         0
     } else {
         1

@@ -126,9 +126,7 @@ fn path_components(path: &str) -> (Vec<&str>, bool) {
 
 fn component_kind(idx: usize, len: usize, is_dir: bool) -> u8 {
     // 0 = directory component, 1 = file component
-    if idx < len.saturating_sub(1) {
-        0
-    } else if is_dir {
+    if idx < len.saturating_sub(1) || is_dir {
         0
     } else {
         1

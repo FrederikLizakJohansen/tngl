@@ -302,7 +302,6 @@ pub fn remove_node(doc: &mut Document, path: &str) -> bool {
     true
 }
 
-#[allow(dead_code)] // used by TUI (not yet implemented)
 /// Add an edge to an existing node in the document.
 ///
 /// Inserts the edge line after the last existing edge of that node (before any
@@ -327,7 +326,6 @@ pub fn add_edge(doc: &mut Document, source: &str, edge: &Edge) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)] // used by TUI (not yet implemented)
 /// Remove a specific edge from a node.
 ///
 /// Matches on target path. Returns `true` if the edge was found and removed.
@@ -507,7 +505,7 @@ pub fn mark_orphan(doc: &mut Document, path: &str) -> bool {
 ///
 /// Returns `true` when changed, `false` if the node was not found, is not a
 /// folder node, or already had orphan-bundle semantics.
-#[allow(dead_code)] // kept as public document-mutation helper
+#[cfg(test)]
 pub fn mark_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     if !path.ends_with('/') {
         return false;
@@ -663,7 +661,7 @@ pub fn convert_link_subtree_to_orphan_subtree(doc: &mut Document, path: &str) ->
 /// Convert an attached `[orphan]` marker to `[orphan bundle]`.
 ///
 /// Returns `true` if converted, `false` if no matching marker was attached.
-#[allow(dead_code)] // kept as public document-mutation helper
+#[cfg(test)]
 pub fn convert_orphan_to_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     add_tokens_to_matching_marker(doc, path, is_orphan_tag, &[TAG_ORPHAN, TAG_BUNDLE])
 }
@@ -1210,7 +1208,7 @@ fn parse_edge_line(raw: &str) -> Result<Edge> {
 }
 
 fn leading_whitespace(raw: &str) -> &str {
-    let len = raw.len() - raw.trim_start_matches(|c| c == ' ' || c == '\t').len();
+    let len = raw.len() - raw.trim_start_matches([' ', '\t']).len();
     &raw[..len]
 }
 
@@ -1260,7 +1258,7 @@ fn detect_indent_unit(doc: &Document) -> String {
             _ => continue,
         };
 
-        let leading_len = raw.len() - raw.trim_start_matches(|c| c == ' ' || c == '\t').len();
+        let leading_len = raw.len() - raw.trim_start_matches([' ', '\t']).len();
         if leading_len == 0 {
             continue;
         }
@@ -1395,9 +1393,7 @@ fn path_components(path: &str) -> (Vec<&str>, bool) {
 }
 
 fn component_kind(idx: usize, len: usize, is_dir: bool) -> u8 {
-    if idx < len.saturating_sub(1) {
-        0
-    } else if is_dir {
+    if idx < len.saturating_sub(1) || is_dir {
         0
     } else {
         1

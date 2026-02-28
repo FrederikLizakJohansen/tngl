@@ -48,7 +48,11 @@ impl UpdatePreview {
 
 pub fn run(silent: bool, mark_new_as_orphans: bool) -> Result<()> {
     let root = tangle::find_root()?;
-    run_in_with_options(&root, silent, None, mark_new_as_orphans)
+    if mark_new_as_orphans {
+        run_in_with_options(&root, silent, None, true)
+    } else {
+        run_in(&root, silent, None)
+    }
 }
 
 pub fn preview_in(root: &Path) -> Result<UpdatePreview> {
@@ -88,7 +92,6 @@ pub fn preview_in(root: &Path) -> Result<UpdatePreview> {
 /// For orphan/bundle/tag conflicts, return:
 /// `'y'` (un-orphan this), `'Y'` (un-orphan all remaining), or `'a'` (abort).
 /// `None` → use interactive stdin.
-#[allow(dead_code)] // used in tests and internal entry-point variants
 pub fn run_in(root: &Path, silent: bool, accept_fn: Option<&dyn Fn(&str) -> char>) -> Result<()> {
     run_in_with_options(root, silent, accept_fn, false)
 }

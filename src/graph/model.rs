@@ -46,11 +46,6 @@ impl Node {
     pub fn is_orphan(&self) -> bool {
         self.edges.is_empty()
     }
-
-    #[allow(dead_code)] // used by TUI (not yet implemented)
-    pub fn is_folder(&self) -> bool {
-        self.path.ends_with('/')
-    }
 }
 
 /// The full graph: an ordered collection of nodes.

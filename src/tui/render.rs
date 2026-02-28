@@ -121,7 +121,6 @@ struct NodeMeta<'a> {
 struct HeadMarker {
     ch: char,
     color: Color,
-    selected: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +138,6 @@ struct ConnectRoute {
     head_row: usize,
     head_marker: char,
     color: Color,
-    highlighted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -216,25 +214,21 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
     if let Some(preview) = data.connect_preview.as_ref() {
         // Connecting mode: preview route.
         let (head_path, foot_path, marker, draw_route) = connect_head_foot(preview);
-        if draw_route {
-            if let (Some(&foot_row), Some(&head_row)) =
+        if draw_route
+            && let (Some(&foot_row), Some(&head_row)) =
                 (row_by_path.get(foot_path), row_by_path.get(head_path))
-            {
-                if foot_row != head_row {
-                    connect_routes.push(ConnectRoute {
-                        foot_row,
-                        head_row,
-                        head_marker: marker,
-                        color: Color::Green,
-                        highlighted: data.create_mode,
-                    });
-                }
-            }
+            && foot_row != head_row
+        {
+            connect_routes.push(ConnectRoute {
+                foot_row,
+                head_row,
+                head_marker: marker,
+                color: Color::Green,
+            });
         } else if let Some(&head_row) = row_by_path.get(head_path) {
             heads.entry(head_row).or_default().push(HeadMarker {
                 ch: marker,
                 color: Color::Green,
-                selected: true,
             });
         }
     } else if data.panel_focus == PanelFocus::Details && data.locked_path.is_some() {
@@ -255,13 +249,11 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                         head_row,
                         head_marker: tangle.marker,
                         color: tangle.color,
-                        highlighted: false,
                     });
                 } else {
                     heads.entry(head_row).or_default().push(HeadMarker {
                         ch: tangle.marker,
                         color: tangle.color,
-                        selected: true,
                     });
                 }
             }
@@ -269,10 +261,9 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
     } else if !data.delete_mode
         && data.connection_filter != ConnectionFilter::Hidden
         && data.panel_focus == PanelFocus::Tree
-        && anchor.is_some()
+        && let Some(anchor_path) = anchor
     {
         // Tree browse mode with connection filter: show filtered tangles as stacked routes.
-        let anchor_path = anchor.unwrap();
         for tangle in &anchor_tangles {
             let relation = relation_label(anchor_path, tangle.edge);
             let include = match data.connection_filter {
@@ -292,21 +283,20 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
             };
             if let (Some(&foot_row), Some(&head_row)) =
                 (row_by_path.get(foot_path), row_by_path.get(head_path))
+                && foot_row != head_row
             {
-                if foot_row != head_row {
-                    connect_routes.push(ConnectRoute {
-                        foot_row,
-                        head_row,
-                        head_marker: tangle.marker,
-                        color: tangle.color,
-                        highlighted: false,
-                    });
-                }
+                connect_routes.push(ConnectRoute {
+                    foot_row,
+                    head_row,
+                    head_marker: tangle.marker,
+                    color: tangle.color,
+                });
             }
         }
-    } else if data.delete_mode && anchor.is_some() {
+    } else if data.delete_mode
+        && let Some(anchor_path) = anchor
+    {
         // Delete mode: always surface only the selected tangle with strong emphasis.
-        let anchor_path = anchor.unwrap();
         if let Some(tangle) = anchor_tangles.iter().find(|t| t.edge.selected) {
             let (foot_path, head_path) = if tangle.head_path == anchor_path {
                 (tangle.neighbor, anchor_path)
@@ -322,13 +312,11 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                         head_row,
                         head_marker: tangle.marker,
                         color: Color::LightRed,
-                        highlighted: true,
                     });
                 } else {
                     heads.entry(head_row).or_default().push(HeadMarker {
                         ch: tangle.marker,
                         color: Color::LightRed,
-                        selected: true,
                     });
                 }
             }
@@ -659,15 +647,9 @@ fn build_tree_lines(
 
         // Render active routes from inner (small col) to outer (large col).
         for (route, col, is_endpoint) in &active {
-            let style = if route.highlighted {
-                Style::default()
-                    .fg(route.color)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-                    .fg(route.color)
-                    .add_modifier(Modifier::BOLD)
-            };
+            let style = Style::default()
+                .fg(route.color)
+                .add_modifier(Modifier::BOLD);
             if *is_endpoint {
                 let marker_ch = if idx == route.foot_row {
                     '○'
@@ -800,15 +782,9 @@ fn head_spans(markers: Option<&Vec<HeadMarker>>) -> Vec<Span<'static>> {
     };
 
     for marker in markers.iter().take(3) {
-        let style = if marker.selected {
-            Style::default()
-                .fg(marker.color)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(marker.color)
-                .add_modifier(Modifier::BOLD)
-        };
+        let style = Style::default()
+            .fg(marker.color)
+            .add_modifier(Modifier::BOLD);
         spans.push(Span::styled(format!("{}", marker.ch), style));
     }
     if markers.len() > 3 {
@@ -845,7 +821,6 @@ fn collect_heads(
         out.entry(row).or_default().push(HeadMarker {
             ch: tangle.marker,
             color: tangle.color,
-            selected: tangle.edge.selected,
         });
     }
     out

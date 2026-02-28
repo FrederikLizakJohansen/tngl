@@ -54,7 +54,7 @@ pub struct StatusReport {
 }
 
 impl StatusReport {
-    #[allow(dead_code)] // used by tests; retained for caller compatibility
+    #[cfg(test)]
     pub fn has_issues(&self) -> bool {
         !self.untracked.is_empty() || !self.missing.is_empty() || !self.dangling_edges.is_empty()
     }
@@ -92,13 +92,13 @@ pub fn compute(root: &Path) -> Result<StatusReport> {
 }
 
 /// Pure computation from already-loaded data (for testing).
-#[allow(dead_code)] // used by tests
+#[cfg(test)]
 pub fn compute_from(fs_paths: &[String], g: &Graph) -> StatusReport {
     compute_from_with_intentional_and_options(fs_paths, g, &HashSet::new(), true)
 }
 
 /// Pure computation with explicit intentional orphan markers.
-#[allow(dead_code)] // used by tests
+#[cfg(test)]
 pub fn compute_from_with_intentional(
     fs_paths: &[String],
     g: &Graph,
@@ -273,168 +273,142 @@ fn print_report(r: &StatusReport) {
     }
 
     let mut update_preview_printed = false;
-    if let Some(preview) = &r.update_preview {
-        if preview.has_any_change() {
-            update_preview_printed = true;
-            println!("\n  {}", "Graph file can be updated:".blue().bold());
-            if preview.orphan_link_conflicts > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} orphan-link conflict{}",
-                        preview.orphan_link_conflicts,
-                        if preview.orphan_link_conflicts == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.folder_orphan_scope_conflicts > 0 {
-                let mut example_paths = preview.folder_orphan_scope_paths.clone();
-                example_paths.sort();
-                let examples = example_paths
-                    .iter()
-                    .take(3)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                println!(
-                    "    {}",
-                    format!(
-                        "{} folder [orphan] scope conflict{}{}",
-                        preview.folder_orphan_scope_conflicts,
-                        if preview.folder_orphan_scope_conflicts == 1 {
-                            ""
-                        } else {
-                            "s"
-                        },
-                        if examples.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({})", examples)
-                        }
-                    )
-                );
-                let unattended_inside: Vec<&String> = r
-                    .unattended_orphans
-                    .iter()
-                    .filter(|path| {
-                        preview.folder_orphan_scope_paths.iter().any(|root| {
-                            path.as_str() == root.as_str()
-                                || (path.as_str() != root.as_str() && path.starts_with(root))
-                        })
-                    })
-                    .collect();
-                if !unattended_inside.is_empty() {
-                    println!(
-                        "    {}",
-                        "Unattended orphan nodes exist inside those folder(s).".dark_grey()
-                    );
-                    println!(
-                        "    {}",
-                        "If you update without adding a tangle, you'll be asked to convert to [orphan bundle]."
-                            .dark_grey()
-                    );
+    if let Some(preview) = &r.update_preview
+        && preview.has_any_change()
+    {
+        update_preview_printed = true;
+        println!("\n  {}", "Graph file can be updated:".blue().bold());
+        if preview.orphan_link_conflicts > 0 {
+            println!(
+                "    {} orphan-link conflict{}",
+                preview.orphan_link_conflicts,
+                if preview.orphan_link_conflicts == 1 {
+                    ""
+                } else {
+                    "s"
                 }
-            }
-            if preview.orphaned_bundle_conflicts > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} orphaned [bundle] conflict{}",
-                        preview.orphaned_bundle_conflicts,
-                        if preview.orphaned_bundle_conflicts == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.lint_removed_floating_tags > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} floating tag{} can be removed",
-                        preview.lint_removed_floating_tags,
-                        if preview.lint_removed_floating_tags == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.lint_removed_extra_blank_lines > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} extra blank line{} can be collapsed",
-                        preview.lint_removed_extra_blank_lines,
-                        if preview.lint_removed_extra_blank_lines == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.lint_normalized_tag_indentation > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} tag indentation{} can be normalized",
-                        preview.lint_normalized_tag_indentation,
-                        if preview.lint_normalized_tag_indentation == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.lint_normalized_edge_indentation > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} edge indentation{} can be normalized",
-                        preview.lint_normalized_edge_indentation,
-                        if preview.lint_normalized_edge_indentation == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            if preview.mirrored_edges > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} mirrored edge{} can be synced",
-                        preview.mirrored_edges,
-                        if preview.mirrored_edges == 1 { "" } else { "s" }
-                    )
-                );
-            }
-            if preview.reordered_edge_nodes > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} node edge block{} can be reordered (--, ->, <-)",
-                        preview.reordered_edge_nodes,
-                        if preview.reordered_edge_nodes == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
-            println!("    {}", "Run `tngl update` to apply.".dark_grey());
+            );
         }
+        if preview.folder_orphan_scope_conflicts > 0 {
+            let mut example_paths = preview.folder_orphan_scope_paths.clone();
+            example_paths.sort();
+            let examples = example_paths
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            let suffix = if examples.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", examples)
+            };
+            println!(
+                "    {} folder [orphan] scope conflict{}{}",
+                preview.folder_orphan_scope_conflicts,
+                if preview.folder_orphan_scope_conflicts == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+                suffix
+            );
+            let unattended_inside: Vec<&String> = r
+                .unattended_orphans
+                .iter()
+                .filter(|path| {
+                    preview.folder_orphan_scope_paths.iter().any(|root| {
+                        path.as_str() == root.as_str()
+                            || (path.as_str() != root.as_str() && path.starts_with(root))
+                    })
+                })
+                .collect();
+            if !unattended_inside.is_empty() {
+                println!(
+                    "    {}",
+                    "Unattended orphan nodes exist inside those folder(s).".dark_grey()
+                );
+                println!(
+                    "    {}",
+                    "If you update without adding a tangle, you'll be asked to convert to [orphan bundle]."
+                        .dark_grey()
+                );
+            }
+        }
+        if preview.orphaned_bundle_conflicts > 0 {
+            println!(
+                "    {} orphaned [bundle] conflict{}",
+                preview.orphaned_bundle_conflicts,
+                if preview.orphaned_bundle_conflicts == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        if preview.lint_removed_floating_tags > 0 {
+            println!(
+                "    {} floating tag{} can be removed",
+                preview.lint_removed_floating_tags,
+                if preview.lint_removed_floating_tags == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        if preview.lint_removed_extra_blank_lines > 0 {
+            println!(
+                "    {} extra blank line{} can be collapsed",
+                preview.lint_removed_extra_blank_lines,
+                if preview.lint_removed_extra_blank_lines == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        if preview.lint_normalized_tag_indentation > 0 {
+            println!(
+                "    {} tag indentation{} can be normalized",
+                preview.lint_normalized_tag_indentation,
+                if preview.lint_normalized_tag_indentation == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        if preview.lint_normalized_edge_indentation > 0 {
+            println!(
+                "    {} edge indentation{} can be normalized",
+                preview.lint_normalized_edge_indentation,
+                if preview.lint_normalized_edge_indentation == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        if preview.mirrored_edges > 0 {
+            println!(
+                "    {} mirrored edge{} can be synced",
+                preview.mirrored_edges,
+                if preview.mirrored_edges == 1 { "" } else { "s" }
+            );
+        }
+        if preview.reordered_edge_nodes > 0 {
+            println!(
+                "    {} node edge block{} can be reordered (--, ->, <-)",
+                preview.reordered_edge_nodes,
+                if preview.reordered_edge_nodes == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        }
+        println!("    {}", "Run `tngl update` to apply.".dark_grey());
     }
 
     if r.is_clean() && !update_preview_printed {

@@ -102,7 +102,7 @@ pub fn run_reconcile_comment_mismatches() -> Result<()> {
     let mut resolved_pairs = 0usize;
 
     for (idx, mismatch) in mismatches.iter().enumerate() {
-        println!("\n  Mismatch {}/{}:", idx + 1, mismatches.len().to_string());
+        println!("\n  Mismatch {}/{}:", idx + 1, mismatches.len());
         print_mismatch(mismatch);
 
         loop {
@@ -174,9 +174,9 @@ pub fn unreachable_nodes(g: &Graph) -> Vec<&Node> {
         .nodes
         .iter()
         .flat_map(|n| {
-            n.edges.iter().filter_map(move |e| match e.kind {
-                EdgeKind::Directed | EdgeKind::Undirected => Some(e.target.as_str()),
-                EdgeKind::Incoming => Some(n.path.as_str()),
+            n.edges.iter().map(move |e| match e.kind {
+                EdgeKind::Directed | EdgeKind::Undirected => e.target.as_str(),
+                EdgeKind::Incoming => n.path.as_str(),
             })
         })
         .collect();

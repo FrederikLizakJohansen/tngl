@@ -14,15 +14,9 @@ pub enum SettingsEvent {
     Close,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct SettingsPanelState {
     pub selected_row: usize,
-}
-
-impl Default for SettingsPanelState {
-    fn default() -> Self {
-        Self { selected_row: 0 }
-    }
 }
 
 const SETTINGS_ROW_COUNT: usize = 4;

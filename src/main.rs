@@ -1,6 +1,5 @@
 mod commands;
 mod graph;
-mod html;
 mod parser;
 mod scanner;
 mod tangle;
