@@ -1,4 +1,12 @@
-# tngl
+
+      ████████╗███╗  ██╗ ██████╗ ██╗
+         ██╔══╝████╗ ██║██╔════╝ ██║
+         ██║   ██╔██╗██║██║  ███╗██║
+         ██║   ██║╚████║██║   ██║██║
+         ██║   ██║ ╚███║╚██████╔╝███████╗
+         ╚═╝   ╚═╝  ╚══╝ ╚═════╝ ╚══════╝
+
+        relational graph for your repository
 
 
 `tngl` is a repo-native, human-authored graph for code relationships.
