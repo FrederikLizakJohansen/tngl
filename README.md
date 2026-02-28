@@ -1,4 +1,12 @@
-# tngl
+
+      ████████╗███╗  ██╗ ██████╗ ██╗
+         ██╔══╝████╗ ██║██╔════╝ ██║
+         ██║   ██╔██╗██║██║  ███╗██║
+         ██║   ██║╚████║██║   ██║██║
+         ██║   ██║ ╚███║╚██████╔╝███████╗
+         ╚═╝   ╚═╝  ╚══╝ ╚═════╝ ╚══════╝
+
+        relational graph for your repository
 
 > Some generative AI was used while building this project to test how fast and reliable it could be for a first pass at a useful software tool. If you think this makes the tool illegit you can [kiss my piss], this MIT licensed so do with it what you want.
 
