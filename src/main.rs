@@ -80,7 +80,7 @@ enum Command {
         #[arg(long)]
         demo: bool,
     },
-    /// Generate a self-contained graph.html and open in browser
+    /// Reserved for static HTML export (currently not implemented)
     Open,
     /// Open the TUI settings panel
     Setup,

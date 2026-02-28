@@ -8,6 +8,9 @@ on_delete: prompt
 # Whether to show orphan nodes in the default TUI view
 show_orphans: true
 
+# In view mode, reveal linked nodes inside collapsed folders while focused
+auto_reveal_links: true
+
 # Auto-update graph.tngl on git operations (requires hook install)
 git_hooks: true
 
@@ -17,5 +20,5 @@ git_hooks: true
 # Warn in `tngl status` when an edge has an empty label/comment
 warn_uncommented_edges: true
 
-# On `tngl update`, tag new files as [orphan] and new folders as [orphan bundle]
+# On `tngl update`, tag new files and folders as [orphan]
 mark_new_as_orphans: false

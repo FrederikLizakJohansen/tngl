@@ -36,9 +36,9 @@ pub fn handle_key(
             state.selected_row = (state.selected_row + 1).min(SETTINGS_ROW_COUNT - 1);
             SettingsEvent::None
         }
-        KeyCode::Left | KeyCode::Char('h') => adjust(config, state.selected_row, -1),
+        KeyCode::Left | KeyCode::Char('h') => adjust(config, state.selected_row),
         KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter | KeyCode::Char(' ') => {
-            adjust(config, state.selected_row, 1)
+            adjust(config, state.selected_row)
         }
         _ => SettingsEvent::None,
     }
@@ -208,8 +208,7 @@ fn selected_row_description(selected_row: usize) -> [&'static str; 2] {
     }
 }
 
-fn adjust(config: &mut Config, selected_row: usize, delta: i32) -> SettingsEvent {
-    let _ = delta;
+fn adjust(config: &mut Config, selected_row: usize) -> SettingsEvent {
     match selected_row {
         0 => {
             config.auto_reveal_links = !config.auto_reveal_links;

@@ -157,7 +157,7 @@ coverage/
 
 const WRAPPER_SCRIPT: &str = "\
 #!/bin/sh
-# tngl wrapper — https://github.com/yourname/tngl
+# tngl wrapper — https://github.com/FrederikLizakJohansen/tngl
 SCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"
 SELF=\"$SCRIPT_DIR/tngl\"
 TNGL_BIN=\"$(command -v tngl 2>/dev/null || true)\"
@@ -168,7 +168,7 @@ elif [ -f \"$SCRIPT_DIR/Cargo.toml\" ] && command -v cargo >/dev/null 2>&1 && gr
 else
   echo \"tngl is not installed.\"
   echo \"Install it with: cargo install tngl\"
-  echo \"Or visit: https://github.com/yourname/tngl\"
+  echo \"Or visit: https://github.com/FrederikLizakJohansen/tngl\"
   exit 1
 fi
 ";
