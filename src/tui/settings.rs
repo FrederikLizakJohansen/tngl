@@ -19,7 +19,7 @@ pub struct SettingsPanelState {
     pub selected_row: usize,
 }
 
-const SETTINGS_ROW_COUNT: usize = 4;
+const SETTINGS_ROW_COUNT: usize = 3;
 
 pub fn handle_key(
     key: KeyEvent,
@@ -71,11 +71,6 @@ pub fn draw(frame: &mut Frame, state: &SettingsPanelState, config: &Config) {
             selected_row == 2,
             "warn blank comments",
             config.warn_uncommented_edges,
-        ),
-        settings_row(
-            selected_row == 3,
-            "auto-tag new nodes",
-            config.mark_new_as_orphans,
         ),
         Line::from(""),
         Line::from(Span::styled(
@@ -144,17 +139,13 @@ editor: {}
 
 # Warn in `tngl status` when an edge has an empty label/comment
 warn_uncommented_edges: {}
-
-# On `tngl update`, tag new files and folders as [orphan]
-mark_new_as_orphans: {}
 ",
         on_delete,
         config.show_orphans,
         config.auto_reveal_links,
         config.git_hooks,
         editor,
-        config.warn_uncommented_edges,
-        config.mark_new_as_orphans
+        config.warn_uncommented_edges
     )
 }
 
@@ -200,10 +191,6 @@ fn selected_row_description(selected_row: usize) -> [&'static str; 2] {
             "Shows status warnings when an edge has an empty",
             "label/comment so tangles stay documented.",
         ],
-        3 => [
-            "When update discovers new files/folders, mark them",
-            "as [orphan] for later review.",
-        ],
         _ => ["", ""],
     }
 }
@@ -220,10 +207,6 @@ fn adjust(config: &mut Config, selected_row: usize) -> SettingsEvent {
         }
         2 => {
             config.warn_uncommented_edges = !config.warn_uncommented_edges;
-            SettingsEvent::Changed
-        }
-        3 => {
-            config.mark_new_as_orphans = !config.mark_new_as_orphans;
             SettingsEvent::Changed
         }
         _ => SettingsEvent::None,

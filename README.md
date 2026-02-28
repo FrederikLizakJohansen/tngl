@@ -46,7 +46,7 @@ tngl inspect --orphans
 
 ```bash
 tngl init
-tngl update [--silent] [--mark-new-as-orphans]
+tngl update [--silent]
 tngl status
 tngl inspect --orphans|--dangling|--edges <node>|--unreachable|--comment-mismatches|--reconcile-comments
 tngl mark-orphans
@@ -272,14 +272,12 @@ Supported keys:
 - `git_hooks: true|false`
 - `editor: <command>`
 - `warn_uncommented_edges: true|false`
-- `mark_new_as_orphans: true|false`
 
 `setup` popup currently exposes these toggles directly:
 
 - reveal linked paths (`auto_reveal_links`)
 - git hook updates (`git_hooks`)
 - warn blank comments (`warn_uncommented_edges`)
-- auto-tag new nodes (`mark_new_as_orphans`)
 
 ## Typical Workflows
 

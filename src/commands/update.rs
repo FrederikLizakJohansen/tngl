@@ -46,13 +46,9 @@ impl UpdatePreview {
 // Public entry points
 // ---------------------------------------------------------------------------
 
-pub fn run(silent: bool, mark_new_as_orphans: bool) -> Result<()> {
+pub fn run(silent: bool) -> Result<()> {
     let root = tangle::find_root()?;
-    if mark_new_as_orphans {
-        run_in_with_options(&root, silent, None, true)
-    } else {
-        run_in(&root, silent, None)
-    }
+    run_in(&root, silent, None)
 }
 
 pub fn preview_in(root: &Path) -> Result<UpdatePreview> {
@@ -93,14 +89,13 @@ pub fn preview_in(root: &Path) -> Result<UpdatePreview> {
 /// `'y'` (un-orphan this), `'Y'` (un-orphan all remaining), or `'a'` (abort).
 /// `None` → use interactive stdin.
 pub fn run_in(root: &Path, silent: bool, accept_fn: Option<&dyn Fn(&str) -> char>) -> Result<()> {
-    run_in_with_options(root, silent, accept_fn, false)
+    run_in_with_options(root, silent, accept_fn)
 }
 
 fn run_in_with_options(
     root: &Path,
     silent: bool,
     accept_fn: Option<&dyn Fn(&str) -> char>,
-    cli_mark_new_as_orphans: bool,
 ) -> Result<()> {
     if !silent {
         println!(
@@ -118,38 +113,17 @@ fn run_in_with_options(
     let converted_folder_orphans = 0usize;
     let converted_link_subtrees =
         resolve_orphaned_link_subtree_conflicts(&mut doc, silent, accept_fn)?;
-    let collapsed_subtree_roots = graph::collapsed_subtree_roots(&doc);
     let g = graph::to_graph(&doc)?;
     let cfg = load_config(root)?;
     let d = diff::compute(&fs_paths, &g);
-    let mark_new_as_orphans = cfg.mark_new_as_orphans || cli_mark_new_as_orphans;
 
     // --- deleted files ---
     let deletion_summary = handle_deletions(&mut doc, &g, &d.missing, &cfg, silent, accept_fn)?;
 
-    // --- new files → orphan nodes ---
-    // Process additions after deletions so orphan tags from removed nodes cannot
-    // end up "floating" onto newly inserted nodes.
-    let subtree_roots = collapsed_subtree_roots.clone();
-    let mut marked_orphans = 0usize;
+    // --- new files ---
     let new_count = d.untracked.len();
     for path in &d.untracked {
         graph::add_node(&mut doc, path);
-
-        if !mark_new_as_orphans {
-            continue;
-        }
-
-        let covered_by_subtree = subtree_roots
-            .iter()
-            .any(|root| is_descendant_of_subtree_root(path, root));
-        if covered_by_subtree {
-            continue;
-        }
-
-        if graph::mark_orphan(&mut doc, path) {
-            marked_orphans += 1;
-        }
     }
 
     // --- lint graph file ---
@@ -259,14 +233,6 @@ fn run_in_with_options(
                 "Converted".cyan().bold(),
                 count.to_string().cyan().bold(),
                 format!("orphaned [bundle] tag{}", plural(count)).cyan()
-            );
-        }
-        if marked_orphans > 0 {
-            println!(
-                "  {} {} {}",
-                "Marked".cyan().bold(),
-                marked_orphans.to_string().cyan().bold(),
-                format!("new node{} as [orphan]", plural(marked_orphans)).cyan()
             );
         }
         if reordered_edge_nodes > 0 {
@@ -735,10 +701,6 @@ fn resolve_orphaned_link_subtree_conflicts(
     Ok(converted)
 }
 
-fn is_descendant_of_subtree_root(path: &str, root: &str) -> bool {
-    path != root && path.starts_with(root)
-}
-
 #[derive(Debug, Default, Clone, Copy)]
 struct DeletionSummary {
     removed_internal: usize,
@@ -1194,32 +1156,6 @@ mod tests {
     }
 
     #[test]
-    fn mark_new_as_orphans_tags_files_and_new_folders() {
-        let dir = init_repo(
-            &["src/new.rs", "src/sub/leaf.rs", "standalone.rs"],
-            "src/\n",
-            "on_delete: delete\nmark_new_as_orphans: true\n",
-        );
-        run_in(dir.path(), true, None).unwrap();
-        let content = graph_content(&dir);
-        assert!(content.contains("[orphan]\nstandalone.rs"));
-        assert!(content.contains("[orphan]\n    src/sub/"));
-        assert!(content.contains("[orphan]\n        src/sub/leaf.rs"));
-    }
-
-    #[test]
-    fn cli_mark_new_as_orphans_overrides_default_config_false() {
-        let dir = init_repo(
-            &["new.rs"],
-            "",
-            "on_delete: delete\nmark_new_as_orphans: false\n",
-        );
-        run_in_with_options(dir.path(), true, None, true).unwrap();
-        let content = graph_content(&dir);
-        assert!(content.contains("[orphan]\nnew.rs"));
-    }
-
-    #[test]
     fn linked_orphan_conflict_fails_in_silent_mode() {
         let dir = init_repo(
             &["a.rs", "b.rs"],
@@ -1237,7 +1173,7 @@ mod tests {
             "[orphan]\na.rs\n    -> b.rs : uses\n\nb.rs\n",
             "on_delete: delete\n",
         );
-        run_in_with_options(dir.path(), false, Some(&|_path| 'y'), false).unwrap();
+        run_in_with_options(dir.path(), false, Some(&|_path| 'y')).unwrap();
         let content = graph_content(&dir);
         assert!(!content.contains("[orphan]"));
         assert!(content.contains("a.rs\n    -> b.rs : uses"));
@@ -1260,7 +1196,6 @@ mod tests {
                 calls.set(n + 1);
                 if n == 0 { 'Y' } else { 'a' }
             }),
-            false,
         )
         .unwrap();
         assert_eq!(calls.get(), 1, "yes-to-all should prompt only once");
@@ -1288,7 +1223,7 @@ mod tests {
             "[orphan]\nsrc/\n\n    src/lib.rs\n",
             "on_delete: delete\n",
         );
-        run_in_with_options(dir.path(), false, Some(&|_path| 'y'), false).unwrap();
+        run_in_with_options(dir.path(), false, Some(&|_path| 'y')).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("[orphan]\nsrc/\n"));
         assert!(!content.contains("[orphan bundle]\nsrc/\n"));
@@ -1310,7 +1245,6 @@ mod tests {
                 calls.set(n + 1);
                 if n == 0 { 'Y' } else { 'a' }
             }),
-            false,
         )
         .unwrap();
         assert_eq!(
@@ -1354,7 +1288,7 @@ mod tests {
             "[bundle]\nsrc/\n\n    src/lib.rs\n",
             "on_delete: delete\n",
         );
-        run_in_with_options(dir.path(), false, Some(&|_path| 'y'), false).unwrap();
+        run_in_with_options(dir.path(), false, Some(&|_path| 'y')).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("[orphan bundle]\nsrc/\n"));
         assert!(!content.contains("[bundle]"));
@@ -1376,7 +1310,6 @@ mod tests {
                 calls.set(n + 1);
                 if n == 0 { 'Y' } else { 'a' }
             }),
-            false,
         )
         .unwrap();
         assert_eq!(calls.get(), 1, "yes-to-all should prompt only once");

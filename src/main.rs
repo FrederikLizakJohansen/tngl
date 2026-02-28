@@ -27,9 +27,6 @@ enum Command {
         /// Suppress output unless conflicts require user input
         #[arg(long)]
         silent: bool,
-        /// Tag new files and folders as [orphan]
-        #[arg(long)]
-        mark_new_as_orphans: bool,
     },
     /// Diff the current filesystem against graph.tngl (read-only)
     Status,
@@ -91,10 +88,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Init => commands::init::run(),
-        Command::Update {
-            silent,
-            mark_new_as_orphans,
-        } => commands::update::run(silent, mark_new_as_orphans),
+        Command::Update { silent } => commands::update::run(silent),
         Command::Status => commands::status::run(),
         Command::Inspect {
             orphans,
