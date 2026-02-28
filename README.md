@@ -32,7 +32,6 @@ Inside the repo you want to map:
 tngl init
 tngl view
 tngl status
-tngl update
 tngl inspect --orphans
 ```
 
@@ -72,6 +71,16 @@ tngl open
 - `setup`: opens settings panel directly.
 - `open`: reserved for static HTML export, currently not implemented.
 
+### When To Run `tngl update`
+
+You still use `update` when the repository structure changed outside TUI editing, for example:
+
+- files/folders were added, moved, or deleted
+- you merged/pulled a branch with path changes
+- you want reconciliation/lint cleanup applied to `graph.tngl`
+
+If you only edited relationships in `tngl view`, those writes are already persisted directly to `graph.tngl`.
+
 ## TUI Guide (Full)
 
 Launch:
@@ -97,13 +106,14 @@ tngl setup
 The UI has three major areas:
 
 - `TREE` (left): filesystem tree with connection markers and folder fold/bundle state.
-- `DETAIL TREE` (right): focused node info + connected tangles + action row.
+- `DETAILS` (right): focused node info + connected tangles + action row.
 - Bottom status/description bar: selected node summary + context-sensitive key hints.
 
 Mode badges appear in title/status when active:
 
 - `CREATE` (green)
 - `DELETE` (red)
+- `MOVE` (blue)
 
 ### Visual Language
 
@@ -136,7 +146,6 @@ Main navigation/edit context.
 - Bundle/unbundle focused folder: `b`
 - Start create flow from focused node: `c`
 - Start edge delete picker: `d`
-- Start detach flow: `x`
 - Cycle line overlay filter (`off/all/in/out/ref`): `f`
 - Toggle orphan visibility: `o`
 - Add node: `n`
@@ -153,13 +162,13 @@ Main navigation/edit context.
 Entered with `Enter` from tree.
 
 - Navigate tangle list: `↑/↓`
-- `Enter` on a tangle: start reroute (detach + reconnect)
-- `Enter` on `+ Create new tangle`: enter CREATE flow
+- `Enter`: no action in details mode
 - Delete tangle at cursor: `d`
+- Start move flow: `m`
+- Start create flow: `c`
 - Edit selected edge label: `l`
 - Toggle edge kind directed/undirected: `t`
 - Reverse directed edge direction: `r`
-- Start connect flow: `c`
 - Delete focused node (confirm): `D`
 - Toggle orphan visibility: `o`
 - Cycle line overlay filter: `f`
@@ -167,7 +176,7 @@ Entered with `Enter` from tree.
 
 #### 3) CREATE Flow
 
-Start from tree (`c`) or details (`Enter` on `+ Create new tangle`).
+Start from tree (`c`) or details (`c`).
 
 - Pick target node: `↑/↓`
 - Change edge type (`in/out/ref`): `←/→`
@@ -197,14 +206,16 @@ From tree, press `d`.
 - Confirm deletion prompt: `Enter`
 - Cancel delete mode: `Esc` or `Backspace`
 
-#### 6) Detach/Reroute Flow
+#### 6) MOVE Flow (Edge Reroute)
 
-Two ways:
+In details mode, hover an edge and press `m`.
 
-- From details: `Enter` on an edge starts reroute immediately.
-- From tree: `x` enters detach mode.
-  - First choose which end to move: `s` (source) or `t` (target)
-  - Move to replacement node and press `Enter`.
+- This grabs the opposite endpoint relative to the details anchor node.
+- Move focus to the replacement node with `↑/↓`.
+- Change tangle type with `←/→`.
+- Apply move with `Enter`.
+- Cancel with `Esc` or `Backspace`.
+- Moving onto the other endpoint is blocked (no self-loop moves).
 
 #### 7) Bundle Flow
 
@@ -280,7 +291,6 @@ tngl init
 tngl view
 # add/edit tangles interactively
 tngl status
-tngl update
 ```
 
 ### Audit graph quality

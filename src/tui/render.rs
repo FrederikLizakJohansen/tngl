@@ -101,11 +101,13 @@ pub struct CanvasRenderData<'a> {
     pub locked_path: Option<&'a str>,
     pub details_cursor: usize,
     pub connect_preview: Option<ConnectPreview<'a>>,
+    pub move_preview: Option<ConnectPreview<'a>>,
     pub collapsed_folders: &'a [String],
     pub bundled_folders: &'a [String],
     pub connection_filter: ConnectionFilter,
     pub delete_mode: bool,
     pub create_mode: bool,
+    pub move_mode: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +159,8 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
         Some(("DELETE", Color::LightRed))
     } else if data.create_mode {
         Some(("CREATE", Color::Green))
+    } else if data.move_mode {
+        Some(("MOVE", Color::Blue))
     } else {
         None
     };
@@ -231,6 +235,26 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                 color: Color::Green,
             });
         }
+    } else if let Some(preview) = data.move_preview.as_ref() {
+        // Move mode: preview route follows focused target while rerouting.
+        let (head_path, foot_path, marker, draw_route) = connect_head_foot(preview);
+        if draw_route
+            && let (Some(&foot_row), Some(&head_row)) =
+                (row_by_path.get(foot_path), row_by_path.get(head_path))
+            && foot_row != head_row
+        {
+            connect_routes.push(ConnectRoute {
+                foot_row,
+                head_row,
+                head_marker: marker,
+                color: Color::Blue,
+            });
+        } else if let Some(&head_row) = row_by_path.get(head_path) {
+            heads.entry(head_row).or_default().push(HeadMarker {
+                ch: marker,
+                color: Color::Blue,
+            });
+        }
     } else if data.panel_focus == PanelFocus::Details && data.locked_path.is_some() {
         // Detail mode: only the selected tangle, as an L-shaped route.
         if let Some(tangle) = anchor_tangles.get(data.details_cursor) {
@@ -258,7 +282,36 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                 }
             }
         }
+    } else if data.move_mode
+        && let Some(anchor_path) = anchor
+    {
+        // Move mode: emphasize the selected tangle route in blue.
+        if let Some(tangle) = anchor_tangles.iter().find(|t| t.edge.selected) {
+            let (foot_path, head_path) = if tangle.head_path == anchor_path {
+                (tangle.neighbor, anchor_path)
+            } else {
+                (anchor_path, tangle.head_path)
+            };
+            if let (Some(&foot_row), Some(&head_row)) =
+                (row_by_path.get(foot_path), row_by_path.get(head_path))
+            {
+                if foot_row != head_row {
+                    connect_routes.push(ConnectRoute {
+                        foot_row,
+                        head_row,
+                        head_marker: tangle.marker,
+                        color: Color::Blue,
+                    });
+                } else {
+                    heads.entry(head_row).or_default().push(HeadMarker {
+                        ch: tangle.marker,
+                        color: Color::Blue,
+                    });
+                }
+            }
+        }
     } else if !data.delete_mode
+        && !data.move_mode
         && data.connection_filter != ConnectionFilter::Hidden
         && data.panel_focus == PanelFocus::Tree
         && let Some(anchor_path) = anchor
@@ -338,15 +391,18 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
         Style::default().fg(Color::LightRed)
     } else if data.create_mode {
         Style::default().fg(Color::Green)
+    } else if data.move_mode {
+        Style::default().fg(Color::Blue)
     } else if tree_focused {
         Style::default().fg(Color::White)
     } else {
         Style::default().fg(Color::DarkGray)
     };
-    if tree_focused && (data.delete_mode || data.create_mode) {
+    if tree_focused && (data.delete_mode || data.create_mode || data.move_mode) {
         tree_border_style = tree_border_style.add_modifier(Modifier::BOLD);
     }
-    let tree_title_style = if tree_focused || data.delete_mode || data.create_mode {
+    let tree_title_style = if tree_focused || data.delete_mode || data.create_mode || data.move_mode
+    {
         Style::default()
             .fg(Color::White)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
@@ -387,29 +443,32 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
         Style::default().fg(Color::LightRed)
     } else if data.create_mode {
         Style::default().fg(Color::Green)
+    } else if data.move_mode {
+        Style::default().fg(Color::Blue)
     } else if details_focused {
         Style::default().fg(Color::White)
     } else {
         Style::default().fg(Color::DarkGray)
     };
-    if details_focused && (data.delete_mode || data.create_mode) {
+    if details_focused && (data.delete_mode || data.create_mode || data.move_mode) {
         details_border_style = details_border_style.add_modifier(Modifier::BOLD);
     }
-    let details_title_style = if details_focused || data.delete_mode || data.create_mode {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-    } else {
-        Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD)
-    };
+    let details_title_style =
+        if details_focused || data.delete_mode || data.create_mode || data.move_mode {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+        } else {
+            Style::default()
+                .fg(Color::Gray)
+                .add_modifier(Modifier::BOLD)
+        };
     let details_block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(details_border_style)
         .title(Line::from(vec![
-            Span::styled("DETAIL TREE", details_title_style),
+            Span::styled("DETAILS", details_title_style),
             Span::raw("  "),
             Span::styled(data.mode_label, Style::default().fg(Color::DarkGray)),
         ]));
@@ -438,6 +497,8 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                     Color::LightRed
                 } else if data.create_mode {
                     Color::Green
+                } else if data.move_mode {
+                    Color::Blue
                 } else {
                     Color::Cyan
                 })
@@ -456,6 +517,8 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
                 Color::LightRed
             } else if data.create_mode {
                 Color::Green
+            } else if data.move_mode {
+                Color::Blue
             } else {
                 Color::DarkGray
             }))
@@ -1053,12 +1116,17 @@ fn build_details_lines(
                 let cursor_active =
                     locked && data.panel_focus == PanelFocus::Details && data.details_cursor == idx;
                 let edge_selected = tangle.edge.selected;
-                let highlight_selected = edge_selected && data.delete_mode;
+                let highlight_delete = edge_selected && data.delete_mode;
+                let highlight_move = edge_selected && data.move_mode;
                 let active = cursor_active || edge_selected;
                 let prefix = if active { ">" } else { " " };
-                let style = if highlight_selected {
+                let style = if highlight_delete {
                     Style::default()
                         .fg(Color::LightRed)
+                        .add_modifier(Modifier::BOLD)
+                } else if highlight_move {
+                    Style::default()
+                        .fg(Color::Blue)
                         .add_modifier(Modifier::BOLD)
                 } else if cursor_active || edge_selected {
                     Style::default().fg(Color::Black).bg(Color::Yellow)
@@ -1074,9 +1142,13 @@ fn build_details_lines(
                     style,
                 )));
                 if !tangle.edge.label.trim().is_empty() {
-                    let label_style = if highlight_selected {
+                    let label_style = if highlight_delete {
                         Style::default()
                             .fg(Color::LightRed)
+                            .add_modifier(Modifier::BOLD)
+                    } else if highlight_move {
+                        Style::default()
+                            .fg(Color::Blue)
                             .add_modifier(Modifier::BOLD)
                     } else if edge_selected {
                         Style::default().fg(Color::Yellow)
@@ -1093,26 +1165,8 @@ fn build_details_lines(
 
         lines.push(Line::from(""));
         if locked {
-            let create_idx = tangles.len();
-            let create_active =
-                data.panel_focus == PanelFocus::Details && data.details_cursor == create_idx;
-            let create_style = if create_active {
-                Style::default().fg(Color::Black).bg(Color::Yellow)
-            } else {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD)
-            };
             lines.push(Line::from(Span::styled(
-                format!(
-                    "{} + Create new tangle",
-                    if create_active { ">" } else { " " }
-                ),
-                create_style,
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Enter reroutes edge; on '+' row it starts CREATE. Esc/Backspace returns to tree.",
+                "Use [m] to MOVE selected edge or [c] to start CREATE. Esc/Backspace returns to tree.",
                 Style::default().fg(Color::DarkGray),
             )));
         } else {
@@ -1215,9 +1269,10 @@ fn render_help_overlay(frame: &mut Frame) {
         Line::from("  1) Up/down (j/k or arrows) to focus a node"),
         Line::from("     z folds/unfolds focused folder, b bundles/locks folder"),
         Line::from("  2) Enter opens details for focused node"),
-        Line::from("  3) In details: Enter reroutes edge; '+ Create new tangle' enters CREATE"),
-        Line::from("  4) Create: up/down target, left/right type, Enter"),
-        Line::from("  5) Type comment in details, Enter to finalize"),
+        Line::from("  3) In details: up/down picks edge, m enters MOVE, c enters CREATE"),
+        Line::from("  4) MOVE: up/down target, left/right type, Enter applies"),
+        Line::from("  5) CREATE: up/down target, left/right type, Enter opens comment popup"),
+        Line::from("  6) Type comment in popup, Enter to finalize"),
         Line::from(""),
         Line::from("Esc/Backspace backs out one step."),
     ])
