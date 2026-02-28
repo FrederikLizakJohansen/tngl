@@ -15,6 +15,8 @@
 - Nodes are files/folders.
 - Edges are tangles between nodes.
 - The graph lives in `tangle/graph.tngl` and is designed to be edited by humans.
+- An integrated TUI makes it easy and intuitive to keep track of file dependencies.
+<img width="1274" height="804" alt="image" src="https://github.com/user-attachments/assets/3f98672a-1f05-4602-87a7-765fe84ac628" />
 
 ## Install
 
