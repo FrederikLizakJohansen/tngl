@@ -18,7 +18,19 @@
 
 ## Install
 
-From source:
+From crates.io (recommended):
+
+```bash
+cargo install tngl
+```
+
+Upgrade to latest published version:
+
+```bash
+cargo install tngl --force
+```
+
+From source (dev/local):
 
 ```bash
 git clone git@github.com:FrederikLizakJohansen/tngl.git
