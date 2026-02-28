@@ -28,7 +28,7 @@ enum Command {
         /// Suppress output unless conflicts require user input
         #[arg(long)]
         silent: bool,
-        /// Tag new files as [orphan] and new folders as [orphan bundle]
+        /// Tag new files and folders as [orphan]
         #[arg(long)]
         mark_new_as_orphans: bool,
     },
@@ -76,7 +76,11 @@ enum Command {
     /// Open tangle/graph.tngl in your editor
     Edit,
     /// Open the interactive TUI canvas
-    View,
+    View {
+        /// Launch with a built-in sample graph (no repo required)
+        #[arg(long)]
+        demo: bool,
+    },
     /// Generate a self-contained graph.html and open in browser
     Open,
     /// Open the TUI settings panel
@@ -123,7 +127,7 @@ fn main() -> Result<()> {
         Command::MarkOrphans => commands::intentionalize_orphans::run(),
         Command::List => commands::list::run(),
         Command::Edit => commands::edit::run(),
-        Command::View => commands::view::run(),
+        Command::View { demo } => commands::view::run(demo),
         Command::Open => commands::open::run(),
         Command::Setup => commands::view::run_setup(),
     }

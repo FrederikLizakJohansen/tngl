@@ -73,8 +73,6 @@ pub fn compute(root: &Path) -> Result<StatusReport> {
     let fs_paths = tree::scan(root)?;
     let content = std::fs::read_to_string(tangle::graph_path(root))?;
     let doc = graph::parse(&content)?;
-    let collapsed_subtree_roots = graph::collapsed_subtree_roots(&doc);
-    let fs_paths = filter_subtree_descendants(&fs_paths, &collapsed_subtree_roots);
     let g = graph::to_graph(&doc)?;
     let cfg = load_config(root)?;
     let intentional = graph::intentional_orphans(&doc);
@@ -84,12 +82,6 @@ pub fn compute(root: &Path) -> Result<StatusReport> {
         &intentional,
         cfg.warn_uncommented_edges,
     );
-    report
-        .missing
-        .retain(|(path, _)| !is_collapsed_descendant(path, &collapsed_subtree_roots));
-    report
-        .unattended_orphans
-        .retain(|path| !is_collapsed_descendant(path, &collapsed_subtree_roots));
     report.missing_exists_on_disk = report
         .missing
         .iter()
@@ -361,20 +353,6 @@ fn print_report(r: &StatusReport) {
                     )
                 );
             }
-            if preview.collapsed_subtree_nodes > 0 {
-                println!(
-                    "    {}",
-                    format!(
-                        "{} bundled descendant node{} can be collapsed",
-                        preview.collapsed_subtree_nodes,
-                        if preview.collapsed_subtree_nodes == 1 {
-                            ""
-                        } else {
-                            "s"
-                        }
-                    )
-                );
-            }
             if preview.lint_removed_floating_tags > 0 {
                 println!(
                     "    {}",
@@ -480,27 +458,6 @@ fn load_config(root: &Path) -> Result<config::Config> {
     } else {
         Ok(config::Config::default())
     }
-}
-
-fn filter_subtree_descendants(fs_paths: &[String], roots: &HashSet<String>) -> Vec<String> {
-    if roots.is_empty() {
-        return fs_paths.to_vec();
-    }
-    fs_paths
-        .iter()
-        .filter(|path| {
-            !roots
-                .iter()
-                .any(|root| path.as_str() != root && path.starts_with(root))
-        })
-        .cloned()
-        .collect()
-}
-
-fn is_collapsed_descendant(path: &str, roots: &HashSet<String>) -> bool {
-    roots
-        .iter()
-        .any(|root| path != root && path.starts_with(root))
 }
 
 fn closest_node_hint(target: &str, candidates: &[String]) -> Option<String> {
@@ -753,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn compute_ignores_untracked_descendants_for_orphan_subtree() {
+    fn compute_reports_untracked_descendants_for_orphan_subtree() {
         use std::fs as sfs;
         use tempfile::TempDir;
 
@@ -768,11 +725,11 @@ mod tests {
         sfs::write(dir.path().join("src/lib.rs"), "").unwrap();
 
         let report = compute(dir.path()).unwrap();
-        assert!(!report.untracked.contains(&"src/lib.rs".to_string()));
+        assert!(report.untracked.contains(&"src/lib.rs".to_string()));
     }
 
     #[test]
-    fn compute_ignores_untracked_descendants_for_link_subtree() {
+    fn compute_reports_untracked_descendants_for_link_subtree() {
         use std::fs as sfs;
         use tempfile::TempDir;
 
@@ -783,11 +740,11 @@ mod tests {
         sfs::write(dir.path().join("src/lib.rs"), "").unwrap();
 
         let report = compute(dir.path()).unwrap();
-        assert!(!report.untracked.contains(&"src/lib.rs".to_string()));
+        assert!(report.untracked.contains(&"src/lib.rs".to_string()));
     }
 
     #[test]
-    fn compute_reports_update_preview_for_pending_bundle_collapse() {
+    fn compute_does_not_report_bundle_collapse_as_pending_update() {
         use std::fs as sfs;
         use tempfile::TempDir;
 
@@ -795,20 +752,21 @@ mod tests {
         sfs::create_dir_all(dir.path().join("tangle")).unwrap();
         sfs::write(
             dir.path().join("tangle/graph.tngl"),
-            "[bundle]\nsrc/\n\n    src/lib.rs\n",
+            "[bundle]\nsrc/\n    <- consumer.rs : used by\n\n    src/lib.rs\n\nconsumer.rs\n    -> src/ : used by\n",
         )
         .unwrap();
         sfs::create_dir_all(dir.path().join("src")).unwrap();
         sfs::write(dir.path().join("src/lib.rs"), "").unwrap();
+        sfs::write(dir.path().join("consumer.rs"), "").unwrap();
 
         let report = compute(dir.path()).unwrap();
         let preview = report.update_preview.expect("preview should be present");
-        assert_eq!(preview.collapsed_subtree_nodes, 1);
-        assert!(preview.has_any_change());
+        assert_eq!(preview.collapsed_subtree_nodes, 0);
+        assert!(!preview.has_any_change());
     }
 
     #[test]
-    fn compute_reports_update_preview_with_folder_orphan_scope_path() {
+    fn compute_does_not_report_folder_orphan_scope_conflict() {
         use std::fs as sfs;
         use tempfile::TempDir;
 
@@ -824,8 +782,8 @@ mod tests {
 
         let report = compute(dir.path()).unwrap();
         let preview = report.update_preview.expect("preview should be present");
-        assert_eq!(preview.folder_orphan_scope_conflicts, 1);
-        assert_eq!(preview.folder_orphan_scope_paths, vec!["src/".to_string()]);
+        assert_eq!(preview.folder_orphan_scope_conflicts, 0);
+        assert!(preview.folder_orphan_scope_paths.is_empty());
     }
 
     #[test]

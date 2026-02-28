@@ -20,6 +20,7 @@ pub enum OnDelete {
 pub struct Config {
     pub on_delete: OnDelete,
     pub show_orphans: bool,
+    pub auto_reveal_links: bool,
     pub git_hooks: bool,
     pub editor: Option<String>,
     pub warn_uncommented_edges: bool,
@@ -31,6 +32,7 @@ impl Default for Config {
         Self {
             on_delete: OnDelete::default(),
             show_orphans: true,
+            auto_reveal_links: true,
             git_hooks: true,
             editor: None,
             warn_uncommented_edges: true,
@@ -54,6 +56,9 @@ on_delete: prompt
 # Whether to show orphan nodes in the default TUI view
 show_orphans: true
 
+# In view mode, reveal linked nodes inside collapsed folders while focused
+auto_reveal_links: true
+
 # Auto-update graph.tngl on git operations (requires hook install)
 git_hooks: true
 
@@ -63,7 +68,7 @@ git_hooks: true
 # Warn in `tngl status` when an edge has an empty label/comment
 warn_uncommented_edges: true
 
-# On `tngl update`, tag new files as [orphan] and new folders as [orphan bundle]
+# On `tngl update`, tag new files and folders as [orphan]
 mark_new_as_orphans: false
 ";
 
@@ -103,6 +108,9 @@ pub fn parse(input: &str) -> Result<Config> {
             }
             "show_orphans" => {
                 config.show_orphans = parse_bool(value, line_num + 1)?;
+            }
+            "auto_reveal_links" => {
+                config.auto_reveal_links = parse_bool(value, line_num + 1)?;
             }
             "git_hooks" => {
                 config.git_hooks = parse_bool(value, line_num + 1)?;
@@ -159,6 +167,7 @@ mod tests {
         let cfg = parse("").unwrap();
         assert_eq!(cfg.on_delete, OnDelete::Prompt);
         assert!(cfg.show_orphans);
+        assert!(cfg.auto_reveal_links);
         assert!(cfg.git_hooks);
         assert_eq!(cfg.editor, None);
         assert!(cfg.warn_uncommented_edges);
@@ -170,6 +179,7 @@ mod tests {
         let cfg = parse(DEFAULT_CONTENTS).unwrap();
         assert_eq!(cfg.on_delete, OnDelete::Prompt);
         assert!(cfg.show_orphans);
+        assert!(cfg.auto_reveal_links);
         assert!(cfg.git_hooks);
         assert_eq!(cfg.editor, None);
         assert!(cfg.warn_uncommented_edges);
@@ -187,8 +197,10 @@ mod tests {
 
     #[test]
     fn parses_false_values() {
-        let cfg = parse("show_orphans: false\ngit_hooks: false\n").unwrap();
+        let cfg =
+            parse("show_orphans: false\nauto_reveal_links: false\ngit_hooks: false\n").unwrap();
         assert!(!cfg.show_orphans);
+        assert!(!cfg.auto_reveal_links);
         assert!(!cfg.git_hooks);
     }
 

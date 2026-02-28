@@ -507,6 +507,7 @@ pub fn mark_orphan(doc: &mut Document, path: &str) -> bool {
 ///
 /// Returns `true` when changed, `false` if the node was not found, is not a
 /// folder node, or already had orphan-bundle semantics.
+#[allow(dead_code)] // kept as public document-mutation helper
 pub fn mark_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     if !path.ends_with('/') {
         return false;
@@ -526,6 +527,29 @@ pub fn mark_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     true
 }
 
+/// Mark a folder node as bundled by ensuring `[bundle]` above it.
+///
+/// Returns `true` when changed, `false` if the node was not found, is not a
+/// folder node, or already had bundle semantics.
+pub fn mark_link_subtree(doc: &mut Document, path: &str) -> bool {
+    if !path.ends_with('/') {
+        return false;
+    }
+
+    let Some((node_idx, _)) = find_node_range(&doc.lines, path) else {
+        return false;
+    };
+
+    if let Some(tag_idx) = attached_tag_line_idx(doc, node_idx) {
+        return ensure_tag_tokens_on_line(doc, tag_idx, &[TAG_BUNDLE]);
+    }
+
+    let node_raw = doc.lines[node_idx].raw();
+    let tag = format!("{}[bundle]", leading_whitespace(node_raw));
+    doc.lines.insert(node_idx, DocLine::Tag(tag));
+    true
+}
+
 /// Remove an `[orphan]` marker directly attached to `path`.
 pub fn unmark_orphan(doc: &mut Document, path: &str) -> bool {
     unmark_marker(doc, path, OrphanMarkerKind::Orphan)
@@ -536,6 +560,40 @@ pub fn unmark_orphan(doc: &mut Document, path: &str) -> bool {
 /// For `[orphan bundle]`, this removes only `orphan`, leaving `[bundle]`.
 pub fn unmark_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     unmark_marker(doc, path, OrphanMarkerKind::OrphanSubtree)
+}
+
+/// Remove bundle semantics directly attached to `path`.
+///
+/// For `[orphan bundle]`, this removes only `bundle`, leaving `[orphan]`.
+pub fn unmark_link_subtree(doc: &mut Document, path: &str) -> bool {
+    let Some((node_idx, _)) = find_node_range(&doc.lines, path) else {
+        return false;
+    };
+    let Some(tag_idx) = attached_tag_line_idx(doc, node_idx) else {
+        return false;
+    };
+    let raw = match &doc.lines[tag_idx] {
+        DocLine::Tag(raw) => raw.clone(),
+        _ => return false,
+    };
+    let Some(mut tokens) = parse_tag_tokens(raw.trim()) else {
+        return false;
+    };
+    if !tokens.iter().any(|t| t == TAG_BUNDLE) {
+        return false;
+    }
+    tokens.retain(|t| t != TAG_BUNDLE);
+    let tokens = canonicalize_tag_tokens(tokens);
+    if tokens.is_empty() {
+        doc.lines.remove(tag_idx);
+    } else {
+        doc.lines[tag_idx] = DocLine::Tag(format!(
+            "{}{}",
+            leading_whitespace(&raw),
+            format_tag_tokens(&tokens)
+        ));
+    }
+    true
 }
 
 /// Return explicitly tagged orphan markers as `(path, marker_kind)`.
@@ -605,6 +663,7 @@ pub fn convert_link_subtree_to_orphan_subtree(doc: &mut Document, path: &str) ->
 /// Convert an attached `[orphan]` marker to `[orphan bundle]`.
 ///
 /// Returns `true` if converted, `false` if no matching marker was attached.
+#[allow(dead_code)] // kept as public document-mutation helper
 pub fn convert_orphan_to_orphan_subtree(doc: &mut Document, path: &str) -> bool {
     add_tokens_to_matching_marker(doc, path, is_orphan_tag, &[TAG_ORPHAN, TAG_BUNDLE])
 }
@@ -1781,6 +1840,13 @@ a.rs
     }
 
     #[test]
+    fn mark_link_subtree_inserts_marker() {
+        let mut doc = parse("src/\n").unwrap();
+        assert!(mark_link_subtree(&mut doc, "src/"));
+        assert_eq!(serialize(&doc), "[bundle]\nsrc/\n");
+    }
+
+    #[test]
     fn explicit_orphan_markers_detects_both_tag_types() {
         let doc = parse("[orphan]\na.rs\n\n[orphan bundle]\nsrc/\n").unwrap();
         let markers = explicit_orphan_markers(&doc);
@@ -1804,6 +1870,13 @@ a.rs
         let mut doc = parse("[orphan]\na.rs\n").unwrap();
         assert!(unmark_orphan(&mut doc, "a.rs"));
         assert_eq!(serialize(&doc), "a.rs\n");
+    }
+
+    #[test]
+    fn unmark_link_subtree_removes_bundle_and_keeps_orphan() {
+        let mut doc = parse("[orphan bundle]\nsrc/\n").unwrap();
+        assert!(unmark_link_subtree(&mut doc, "src/"));
+        assert_eq!(serialize(&doc), "[orphan]\nsrc/\n");
     }
 
     #[test]

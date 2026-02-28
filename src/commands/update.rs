@@ -1,6 +1,5 @@
 //! `tngl update` — reconcile graph.tngl against the current filesystem.
 
-use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
@@ -8,7 +7,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 use crossterm::style::Stylize;
 
-use crate::graph::model::{Edge, EdgeKind, Graph, Node};
+use crate::graph::model::{EdgeKind, Graph, Node};
 use crate::parser::config::{Config, OnDelete};
 use crate::parser::{config, graph, layout};
 use crate::scanner::{diff, tree};
@@ -34,7 +33,6 @@ impl UpdatePreview {
         self.orphan_link_conflicts > 0
             || self.folder_orphan_scope_conflicts > 0
             || self.orphaned_bundle_conflicts > 0
-            || self.collapsed_subtree_nodes > 0
             || self.lint_removed_floating_tags > 0
             || self.lint_removed_extra_blank_lines > 0
             || self.lint_normalized_tag_indentation > 0
@@ -60,40 +58,24 @@ pub fn preview_in(root: &Path) -> Result<UpdatePreview> {
     let g = graph::to_graph(&doc)?;
 
     let orphan_link_conflicts = detect_orphan_link_conflicts(&doc, &g).len();
-    let folder_orphan_scope_conflicts = detect_folder_orphan_scope_conflicts(&doc, &g);
-    let folder_orphan_scope_paths: Vec<String> = folder_orphan_scope_conflicts
-        .iter()
-        .map(|c| c.path.clone())
-        .collect();
+    let folder_orphan_scope_conflicts = 0usize;
+    let folder_orphan_scope_paths: Vec<String> = Vec::new();
     let orphaned_bundle_conflicts = detect_orphaned_link_subtree_conflicts(&doc, &g).len();
 
-    let collapsed_subtree_roots = graph::collapsed_subtree_roots(&doc);
-    let collapsed_subtree_nodes = g
-        .nodes
-        .iter()
-        .filter(|n| {
-            collapsed_subtree_roots
-                .iter()
-                .any(|root| is_descendant_of_subtree_root(&n.path, root))
-        })
-        .count();
-
-    let _ = collapse_orphan_subtrees(&mut doc, &collapsed_subtree_roots)?;
     let lint_report = graph::lint(&mut doc);
-    let mirrored_edges = sync_mirrored_edges(&mut doc)?;
     let reordered_edge_nodes = graph::sort_edges_by_kind(&mut doc);
 
     Ok(UpdatePreview {
         orphan_link_conflicts,
-        folder_orphan_scope_conflicts: folder_orphan_scope_conflicts.len(),
+        folder_orphan_scope_conflicts,
         folder_orphan_scope_paths,
         orphaned_bundle_conflicts,
-        collapsed_subtree_nodes,
+        collapsed_subtree_nodes: 0,
         lint_removed_floating_tags: lint_report.removed_floating_orphan_tags,
         lint_removed_extra_blank_lines: lint_report.removed_extra_blank_lines,
         lint_normalized_tag_indentation: lint_report.normalized_tag_indentation,
         lint_normalized_edge_indentation: lint_report.normalized_edge_indentation,
-        mirrored_edges,
+        mirrored_edges: 0,
         reordered_edge_nodes,
     })
 }
@@ -130,15 +112,12 @@ fn run_in_with_options(
     let graph_content = fs::read_to_string(&graph_path)?;
     let mut doc = graph::parse(&graph_content)?;
     let resolved_orphan_conflicts = resolve_orphan_link_conflicts(&mut doc, silent, accept_fn)?;
-    let converted_folder_orphans =
-        resolve_folder_orphan_scope_conflicts(&mut doc, silent, accept_fn)?;
+    let converted_folder_orphans = 0usize;
     let converted_link_subtrees =
         resolve_orphaned_link_subtree_conflicts(&mut doc, silent, accept_fn)?;
     let collapsed_subtree_roots = graph::collapsed_subtree_roots(&doc);
-    let collapsed_count = collapse_orphan_subtrees(&mut doc, &collapsed_subtree_roots)?;
     let g = graph::to_graph(&doc)?;
     let cfg = load_config(root)?;
-    let fs_paths = filter_subtree_descendants(&fs_paths, &collapsed_subtree_roots);
     let d = diff::compute(&fs_paths, &g);
     let mark_new_as_orphans = cfg.mark_new_as_orphans || cli_mark_new_as_orphans;
 
@@ -148,9 +127,8 @@ fn run_in_with_options(
     // --- new files → orphan nodes ---
     // Process additions after deletions so orphan tags from removed nodes cannot
     // end up "floating" onto newly inserted nodes.
-    let mut subtree_roots = collapsed_subtree_roots.clone();
+    let subtree_roots = collapsed_subtree_roots.clone();
     let mut marked_orphans = 0usize;
-    let mut marked_subtrees = 0usize;
     let new_count = d.untracked.len();
     for path in &d.untracked {
         graph::add_node(&mut doc, path);
@@ -166,12 +144,7 @@ fn run_in_with_options(
             continue;
         }
 
-        if path.ends_with('/') {
-            if graph::mark_orphan_subtree(&mut doc, path) {
-                marked_subtrees += 1;
-                subtree_roots.insert(path.clone());
-            }
-        } else if graph::mark_orphan(&mut doc, path) {
+        if graph::mark_orphan(&mut doc, path) {
             marked_orphans += 1;
         }
     }
@@ -179,8 +152,6 @@ fn run_in_with_options(
     // --- lint graph file ---
     let lint_report = graph::lint(&mut doc);
 
-    // --- sync mirrored edge arrows ---
-    let mirrored_edges = sync_mirrored_edges(&mut doc)?;
     let reordered_edge_nodes = graph::sort_edges_by_kind(&mut doc);
 
     if !silent {
@@ -292,35 +263,7 @@ fn run_in_with_options(
                 "  {} {} {}",
                 "Marked".cyan().bold(),
                 marked_orphans.to_string().cyan().bold(),
-                format!("new file node{} as [orphan]", plural(marked_orphans)).cyan()
-            );
-        }
-        if marked_subtrees > 0 {
-            println!(
-                "  {} {} {}",
-                "Marked".cyan().bold(),
-                marked_subtrees.to_string().cyan().bold(),
-                format!(
-                    "new folder node{} as [orphan bundle]",
-                    plural(marked_subtrees)
-                )
-                .cyan()
-            );
-        }
-        if collapsed_count > 0 {
-            println!(
-                "  {} {} {}",
-                "Collapsed".blue().bold(),
-                collapsed_count.to_string().blue().bold(),
-                format!("subtree node{}", plural(collapsed_count)).blue()
-            );
-        }
-        if mirrored_edges > 0 {
-            println!(
-                "  {} {} {}",
-                "Synced".blue().bold(),
-                mirrored_edges.to_string().blue().bold(),
-                format!("mirrored edge{}", plural(mirrored_edges)).blue()
+                format!("new node{} as [orphan]", plural(marked_orphans)).cyan()
             );
         }
         if reordered_edge_nodes > 0 {
@@ -341,8 +284,6 @@ fn run_in_with_options(
             && resolved_orphan_conflicts == 0
             && converted_folder_orphans == 0
             && converted_link_subtrees == 0
-            && collapsed_count == 0
-            && mirrored_edges == 0
             && reordered_edge_nodes == 0
         {
             println!("  {}", "No changes detected.".dark_grey());
@@ -355,8 +296,6 @@ fn run_in_with_options(
         || resolved_orphan_conflicts > 0
         || converted_folder_orphans > 0
         || converted_link_subtrees > 0
-        || collapsed_count > 0
-        || mirrored_edges > 0
         || reordered_edge_nodes > 0;
 
     // Write graph.tngl only when something changed.
@@ -523,25 +462,6 @@ fn prompt_link_subtree_conflict_action() -> Result<char> {
     }
 }
 
-fn prompt_folder_orphan_scope_conflict_action() -> Result<char> {
-    loop {
-        print!("  [y] convert this to [orphan bundle]  [Y] convert all  [a] abort update: ");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let action = match input.trim() {
-            "y" => Some('y'),
-            "Y" => Some('Y'),
-            "a" => Some('a'),
-            _ => None,
-        };
-        if let Some(action) = action {
-            return Ok(action);
-        }
-        println!("  Please choose y, Y, or a.");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -589,12 +509,6 @@ struct LinkSubtreeOrphanConflict {
     path: String,
     incoming: usize,
     outgoing: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FolderOrphanScopeConflict {
-    path: String,
-    descendant_count: usize,
 }
 
 fn detect_orphan_link_conflicts(doc: &graph::Document, g: &Graph) -> Vec<OrphanLinkConflict> {
@@ -730,119 +644,6 @@ fn resolve_orphan_link_conflicts(
     Ok(resolved)
 }
 
-fn detect_folder_orphan_scope_conflicts(
-    doc: &graph::Document,
-    g: &Graph,
-) -> Vec<FolderOrphanScopeConflict> {
-    let mut conflicts = Vec::new();
-    for (path, kind) in graph::explicit_orphan_markers(doc) {
-        if kind != graph::OrphanMarkerKind::Orphan || !path.ends_with('/') {
-            continue;
-        }
-        let descendant_count = g
-            .nodes
-            .iter()
-            .filter(|n| n.path != path && n.path.starts_with(&path))
-            .count();
-        if descendant_count == 0 {
-            continue;
-        }
-        conflicts.push(FolderOrphanScopeConflict {
-            path,
-            descendant_count,
-        });
-    }
-    conflicts
-}
-
-fn resolve_folder_orphan_scope_conflicts(
-    doc: &mut graph::Document,
-    silent: bool,
-    accept_fn: Option<&dyn Fn(&str) -> char>,
-) -> Result<usize> {
-    let g = graph::to_graph(doc)?;
-    let conflicts = detect_folder_orphan_scope_conflicts(doc, &g);
-    if conflicts.is_empty() {
-        return Ok(0);
-    }
-
-    if silent {
-        let mut details: Vec<String> = conflicts
-            .iter()
-            .map(|c| {
-                format!(
-                    "{} ({} descendant{})",
-                    c.path,
-                    c.descendant_count,
-                    plural(c.descendant_count)
-                )
-            })
-            .collect();
-        details.sort();
-        bail!(
-            "folder [orphan] conflict: {}. Run `tngl update` (non-silent) to convert to [orphan bundle], or edit tags manually.",
-            details.join(", ")
-        );
-    }
-
-    println!(
-        "  {} {}",
-        "Conflict".red().bold(),
-        "Folder node(s) tagged [orphan] now have descendants.".red()
-    );
-    println!("  [orphan] on folders is only valid when the folder is singular (no child nodes).");
-    println!("  If descendants should stay explicit, add a tangle (edge) and rerun update.");
-    println!("  Otherwise convert to [orphan bundle] or abort.");
-
-    let mut converted = 0usize;
-    let mut yes_to_all = false;
-    for conflict in conflicts {
-        println!(
-            "\n  {} is tagged [orphan] but has {} descendant node{}.",
-            conflict.path,
-            conflict.descendant_count,
-            plural(conflict.descendant_count),
-        );
-        let action = if yes_to_all {
-            'y'
-        } else {
-            match accept_fn {
-                Some(f) => f(&conflict.path),
-                None => prompt_folder_orphan_scope_conflict_action()?,
-            }
-        };
-        match action {
-            'y' => {
-                if !graph::convert_orphan_to_orphan_subtree(doc, &conflict.path) {
-                    bail!(
-                        "failed to convert [orphan] to [orphan bundle] for '{}'",
-                        conflict.path
-                    );
-                }
-                converted += 1;
-            }
-            'Y' => {
-                if !graph::convert_orphan_to_orphan_subtree(doc, &conflict.path) {
-                    bail!(
-                        "failed to convert [orphan] to [orphan bundle] for '{}'",
-                        conflict.path
-                    );
-                }
-                yes_to_all = true;
-                converted += 1;
-            }
-            _ => {
-                bail!(
-                    "update aborted: folder [orphan] conflict for '{}' was not resolved",
-                    conflict.path
-                );
-            }
-        }
-    }
-
-    Ok(converted)
-}
-
 fn detect_orphaned_link_subtree_conflicts(
     doc: &graph::Document,
     g: &Graph,
@@ -945,134 +746,8 @@ fn resolve_orphaned_link_subtree_conflicts(
     Ok(converted)
 }
 
-fn collapse_orphan_subtrees(
-    doc: &mut graph::Document,
-    orphan_subtree_roots: &HashSet<String>,
-) -> Result<usize> {
-    if orphan_subtree_roots.is_empty() {
-        return Ok(0);
-    }
-
-    let g = graph::to_graph(doc)?;
-    let mut to_remove: Vec<String> = g
-        .nodes
-        .iter()
-        .map(|n| n.path.clone())
-        .filter(|path| {
-            orphan_subtree_roots
-                .iter()
-                .any(|root| is_descendant_of_subtree_root(path, root))
-        })
-        .collect();
-
-    // Remove deeper children first to keep formatting edits predictable.
-    to_remove.sort_by_key(|p| std::cmp::Reverse(p.len()));
-
-    for path in &to_remove {
-        graph::remove_edges_targeting(doc, path);
-        graph::remove_node(doc, path);
-    }
-
-    Ok(to_remove.len())
-}
-
-fn filter_subtree_descendants(fs_paths: &[String], roots: &HashSet<String>) -> Vec<String> {
-    if roots.is_empty() {
-        return fs_paths.to_vec();
-    }
-    fs_paths
-        .iter()
-        .filter(|path| {
-            !roots
-                .iter()
-                .any(|root| is_descendant_of_subtree_root(path, root))
-        })
-        .cloned()
-        .collect()
-}
-
 fn is_descendant_of_subtree_root(path: &str, root: &str) -> bool {
     path != root && path.starts_with(root)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct EdgeKey {
-    source: String,
-    target: String,
-    kind: EdgeKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MissingMirror {
-    key: EdgeKey,
-    label: String,
-}
-
-fn mirror_key(source: &str, edge: &Edge) -> Option<MissingMirror> {
-    let (kind, target) = match edge.kind {
-        EdgeKind::Directed => (EdgeKind::Incoming, source),
-        EdgeKind::Incoming => (EdgeKind::Directed, source),
-        EdgeKind::Undirected => (EdgeKind::Undirected, source),
-    };
-    Some(MissingMirror {
-        key: EdgeKey {
-            source: edge.target.clone(),
-            target: target.to_string(),
-            kind,
-        },
-        label: edge.label.clone(),
-    })
-}
-
-/// Ensure `->`, `<-`, and `--` edges are mirrored on the opposite node.
-///
-/// Example:
-/// - `a.rs -> b.rs : uses` ensures `b.rs <- a.rs : uses`
-/// - `a.rs <- b.rs : input` ensures `b.rs -> a.rs : input`
-/// - `a.rs -- b.rs : siblings` ensures `b.rs -- a.rs : siblings`
-fn sync_mirrored_edges(doc: &mut graph::Document) -> Result<usize> {
-    let g = graph::to_graph(doc)?;
-
-    let mut existing: HashSet<EdgeKey> = HashSet::new();
-    for node in &g.nodes {
-        for edge in &node.edges {
-            existing.insert(EdgeKey {
-                source: node.path.clone(),
-                target: edge.target.clone(),
-                kind: edge.kind.clone(),
-            });
-        }
-    }
-
-    let mut to_add: Vec<MissingMirror> = Vec::new();
-    for node in &g.nodes {
-        for edge in &node.edges {
-            let Some(mirror) = mirror_key(&node.path, edge) else {
-                continue;
-            };
-            // Skip dangling targets; update should not invent missing nodes.
-            if !g.contains(&mirror.key.source) {
-                continue;
-            }
-            if existing.insert(mirror.key.clone()) {
-                to_add.push(mirror);
-            }
-        }
-    }
-
-    for edge in &to_add {
-        graph::add_edge(
-            doc,
-            &edge.key.source,
-            &Edge {
-                target: edge.key.target.clone(),
-                kind: edge.key.kind.clone(),
-                label: edge.label.clone(),
-            },
-        )?;
-    }
-
-    Ok(to_add.len())
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -1435,7 +1110,7 @@ mod tests {
     }
 
     #[test]
-    fn syncs_directed_edges_with_incoming_counterparts() {
+    fn does_not_auto_mirror_directed_edges() {
         let dir = init_repo(
             &["a.rs", "b.rs"],
             "a.rs\n    -> b.rs : uses\n\nb.rs\n",
@@ -1444,11 +1119,11 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("a.rs\n    -> b.rs : uses"));
-        assert!(content.contains("b.rs\n    <- a.rs : uses"));
+        assert!(!content.contains("b.rs\n    <- a.rs : uses"));
     }
 
     #[test]
-    fn syncs_incoming_edges_with_directed_counterparts() {
+    fn does_not_auto_mirror_incoming_edges() {
         let dir = init_repo(
             &["a.rs", "b.rs"],
             "a.rs\n    <- b.rs : consumed by\n\nb.rs\n",
@@ -1457,11 +1132,11 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("a.rs\n    <- b.rs : consumed by"));
-        assert!(content.contains("b.rs\n    -> a.rs : consumed by"));
+        assert!(!content.contains("b.rs\n    -> a.rs : consumed by"));
     }
 
     #[test]
-    fn syncs_undirected_edges_with_counterparts() {
+    fn does_not_auto_mirror_undirected_edges() {
         let dir = init_repo(
             &["a.rs", "b.rs"],
             "a.rs\n    -- b.rs : peers\n\nb.rs\n",
@@ -1470,11 +1145,11 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("a.rs\n    -- b.rs : peers"));
-        assert!(content.contains("b.rs\n    -- a.rs : peers"));
+        assert!(!content.contains("b.rs\n    -- a.rs : peers"));
     }
 
     #[test]
-    fn syncs_mirrors_with_nested_indentation() {
+    fn does_not_insert_nested_mirror_edges() {
         let dir = init_repo(
             &["src/main.rs", "src/commands/mod.rs"],
             "src/\n\n    src/commands/\n\n        src/commands/mod.rs\n            -> src/main.rs : dispatches\n\n    src/main.rs\n",
@@ -1482,12 +1157,13 @@ mod tests {
         );
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
-        assert!(content.contains("    src/main.rs\n        <- src/commands/mod.rs : dispatches\n"));
-        assert!(!content.contains("\n    <- src/commands/mod.rs : dispatches\n"));
+        assert!(
+            !content.contains("    src/main.rs\n        <- src/commands/mod.rs : dispatches\n")
+        );
     }
 
     #[test]
-    fn syncs_mirrors_for_both_arrow_directions() {
+    fn keeps_existing_edges_without_adding_mirrors() {
         let dir = init_repo(
             &["a.rs", "b.rs", "c.rs", "d.rs"],
             "a.rs\n    -> b.rs : uses\n\nb.rs\n\nc.rs\n    <- d.rs : consumed by\n\nd.rs\n",
@@ -1496,9 +1172,9 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("a.rs\n    -> b.rs : uses"));
-        assert!(content.contains("b.rs\n    <- a.rs : uses"));
+        assert!(!content.contains("b.rs\n    <- a.rs : uses"));
         assert!(content.contains("c.rs\n    <- d.rs : consumed by"));
-        assert!(content.contains("d.rs\n    -> c.rs : consumed by"));
+        assert!(!content.contains("d.rs\n    -> c.rs : consumed by"));
     }
 
     #[test]
@@ -1543,7 +1219,7 @@ mod tests {
     }
 
     #[test]
-    fn orphan_subtree_collapses_children_on_update() {
+    fn orphan_subtree_keeps_children_on_update() {
         let dir = init_repo(
             &["src/lib.rs", "src/a.rs"],
             "[orphan bundle]\nsrc/\n\n    src/lib.rs\n\n    src/a.rs\n",
@@ -1552,27 +1228,27 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("[orphan bundle]\nsrc/\n"));
-        assert!(!content.contains("src/lib.rs"));
-        assert!(!content.contains("src/a.rs"));
+        assert!(content.contains("src/lib.rs"));
+        assert!(content.contains("src/a.rs"));
     }
 
     #[test]
-    fn orphan_subtree_children_reappear_when_tag_removed() {
+    fn orphan_subtree_children_remain_when_tag_removed() {
         let dir = init_repo(
             &["src/lib.rs", "src/a.rs"],
             "[orphan bundle]\nsrc/\n",
             "on_delete: delete\n",
         );
         run_in(dir.path(), true, None).unwrap();
-        let collapsed = graph_content(&dir);
-        assert!(!collapsed.contains("src/lib.rs"));
-        assert!(!collapsed.contains("src/a.rs"));
+        let with_tag = graph_content(&dir);
+        assert!(with_tag.contains("src/lib.rs"));
+        assert!(with_tag.contains("src/a.rs"));
 
         sfs::write(dir.path().join("tangle/graph.tngl"), "src/\n").unwrap();
         run_in(dir.path(), true, None).unwrap();
-        let expanded = graph_content(&dir);
-        assert!(expanded.contains("src/lib.rs"));
-        assert!(expanded.contains("src/a.rs"));
+        let without_tag = graph_content(&dir);
+        assert!(without_tag.contains("src/lib.rs"));
+        assert!(without_tag.contains("src/a.rs"));
     }
 
     #[test]
@@ -1585,9 +1261,8 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("[orphan]\nstandalone.rs"));
-        assert!(content.contains("[orphan bundle]\n    src/sub/"));
-        // Child of subtree should not be individually marked.
-        assert!(!content.contains("[orphan]\n        src/sub/leaf.rs"));
+        assert!(content.contains("[orphan]\n    src/sub/"));
+        assert!(content.contains("[orphan]\n        src/sub/leaf.rs"));
     }
 
     #[test]
@@ -1624,7 +1299,7 @@ mod tests {
         let content = graph_content(&dir);
         assert!(!content.contains("[orphan]"));
         assert!(content.contains("a.rs\n    -> b.rs : uses"));
-        assert!(content.contains("b.rs\n    <- a.rs : uses"));
+        assert!(!content.contains("b.rs\n    <- a.rs : uses"));
     }
 
     #[test]
@@ -1652,18 +1327,20 @@ mod tests {
     }
 
     #[test]
-    fn folder_orphan_conflict_fails_in_silent_mode() {
+    fn folder_orphan_with_children_stays_as_orphan() {
         let dir = init_repo(
             &["src/lib.rs"],
             "[orphan]\nsrc/\n\n    src/lib.rs\n",
             "on_delete: delete\n",
         );
-        let err = run_in(dir.path(), true, None).unwrap_err().to_string();
-        assert!(err.contains("folder [orphan] conflict"));
+        run_in(dir.path(), true, None).unwrap();
+        let content = graph_content(&dir);
+        assert!(content.contains("[orphan]\nsrc/\n"));
+        assert!(!content.contains("[orphan bundle]\nsrc/\n"));
     }
 
     #[test]
-    fn folder_orphan_can_be_converted_and_update_continues() {
+    fn folder_orphan_with_children_no_longer_auto_converts() {
         let dir = init_repo(
             &["src/lib.rs"],
             "[orphan]\nsrc/\n\n    src/lib.rs\n",
@@ -1671,12 +1348,12 @@ mod tests {
         );
         run_in_with_options(dir.path(), false, Some(&|_path| 'y'), false).unwrap();
         let content = graph_content(&dir);
-        assert!(content.contains("[orphan bundle]\nsrc/\n"));
-        assert!(!content.contains("[orphan]\nsrc/\n"));
+        assert!(content.contains("[orphan]\nsrc/\n"));
+        assert!(!content.contains("[orphan bundle]\nsrc/\n"));
     }
 
     #[test]
-    fn folder_orphan_yes_to_all_converts_multiple_once() {
+    fn folder_orphan_prompt_callback_not_used_anymore() {
         let dir = init_repo(
             &["src/a.rs", "docs/arch.md"],
             "[orphan]\nsrc/\n\n    src/a.rs\n\n[orphan]\ndocs/\n\n    docs/arch.md\n",
@@ -1694,9 +1371,14 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(calls.get(), 1, "yes-to-all should prompt only once");
+        assert_eq!(
+            calls.get(),
+            0,
+            "folder-orphan conversion prompt should no longer be used"
+        );
         let content = graph_content(&dir);
-        assert_eq!(content.matches("[orphan bundle]").count(), 2);
+        assert_eq!(content.matches("[orphan bundle]").count(), 0);
+        assert_eq!(content.matches("[orphan]").count(), 2);
     }
 
     #[test]
@@ -1762,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn linked_folder_with_link_subtree_does_not_conflict_and_collapses_children() {
+    fn linked_folder_with_link_subtree_does_not_conflict_and_keeps_children() {
         let dir = init_repo(
             &["src/lib.rs", "consumer.rs"],
             "[bundle]\nsrc/\n    <- consumer.rs : used by\n\n    src/lib.rs\n\nconsumer.rs\n",
@@ -1771,8 +1453,8 @@ mod tests {
         run_in(dir.path(), true, None).unwrap();
         let content = graph_content(&dir);
         assert!(content.contains("[bundle]\nsrc/\n    <- consumer.rs : used by"));
-        assert!(!content.contains("src/lib.rs"));
-        assert!(content.contains("consumer.rs\n    -> src/ : used by"));
+        assert!(content.contains("src/lib.rs"));
+        assert!(!content.contains("consumer.rs\n    -> src/ : used by"));
     }
 
     #[test]
@@ -1835,15 +1517,15 @@ mod tests {
     }
 
     #[test]
-    fn preview_reports_pending_bundle_collapse() {
+    fn preview_does_not_report_bundle_as_pending_collapse_change() {
         let dir = init_repo(
-            &["src/lib.rs"],
-            "[bundle]\nsrc/\n\n    src/lib.rs\n",
+            &["src/lib.rs", "consumer.rs"],
+            "[bundle]\nsrc/\n    <- consumer.rs : used by\n\n    src/lib.rs\n\nconsumer.rs\n    -> src/ : used by\n",
             "on_delete: delete\n",
         );
         let preview = preview_in(dir.path()).unwrap();
-        assert_eq!(preview.collapsed_subtree_nodes, 1);
-        assert!(preview.has_any_change());
+        assert_eq!(preview.collapsed_subtree_nodes, 0);
+        assert!(!preview.has_any_change());
     }
 
     #[test]
@@ -1862,7 +1544,7 @@ mod tests {
             "on_delete: delete\n",
         );
         let preview = preview_in(dir.path()).unwrap();
-        assert_eq!(preview.folder_orphan_scope_conflicts, 1);
-        assert_eq!(preview.folder_orphan_scope_paths, vec!["src/".to_string()]);
+        assert_eq!(preview.folder_orphan_scope_conflicts, 0);
+        assert!(preview.folder_orphan_scope_paths.is_empty());
     }
 }

@@ -1,9 +1,11 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 
-pub fn run() -> Result<()> {
-    bail!("`tngl view` is not implemented yet. Use `tngl edit` or `tngl inspect` for now.")
+use crate::tui::canvas;
+
+pub fn run(demo: bool) -> Result<()> {
+    canvas::run(demo, false)
 }
 
 pub fn run_setup() -> Result<()> {
-    bail!("`tngl setup` is not implemented yet because the TUI settings panel is not available.")
+    canvas::run(false, true)
 }
