@@ -363,7 +363,9 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
             .fg(Color::White)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
     } else {
-        Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD)
     };
     let tree_block = Block::default()
         .borders(Borders::ALL)
@@ -410,7 +412,9 @@ pub fn draw(frame: &mut Frame, data: &CanvasRenderData<'_>) {
             .fg(Color::White)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
     } else {
-        Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD)
     };
     let details_block = Block::default()
         .borders(Borders::ALL)

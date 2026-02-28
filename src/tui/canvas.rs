@@ -18,7 +18,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph, Wr
 use ratatui::{Frame, Terminal};
 
 use crate::graph::model::{Edge, EdgeKind, Graph, Node};
-use crate::parser::{config, graph, layout};
+use crate::parser::{config, graph};
 use crate::tangle;
 use crate::tui::input::{self, Action, Direction};
 use crate::tui::render::{
@@ -107,7 +107,6 @@ enum PendingConfirm {
 #[derive(Debug)]
 struct AppState {
     graph_path: Option<PathBuf>,
-    layout_path: Option<PathBuf>,
     config_path: Option<PathBuf>,
     graph: Graph,
     positions: HashMap<String, (i32, i32)>,
@@ -146,7 +145,6 @@ impl AppState {
             let (graph, positions, config) = demo_graph();
             let mut app = Self {
                 graph_path: None,
-                layout_path: None,
                 config_path: None,
                 graph,
                 positions,
@@ -188,20 +186,12 @@ impl AppState {
 
         let root = tangle::find_root()?;
         let graph_path = tangle::graph_path(&root);
-        let layout_path = tangle::layout_path(&root);
         let config_path = tangle::config_path(&root);
 
         let graph_text = fs::read_to_string(&graph_path)?;
         let graph_doc = graph::parse(&graph_text)?;
         let bundled_folders = graph::collapsed_subtree_roots(&graph_doc);
         let graph_model = graph::to_graph(&graph_doc)?;
-
-        let layout_text = fs::read_to_string(&layout_path).unwrap_or_default();
-        let parsed_layout = layout::parse(&layout_text);
-        let mut positions = HashMap::new();
-        for p in parsed_layout.positions {
-            positions.insert(p.path, (p.x, p.y));
-        }
 
         let cfg = if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
@@ -212,10 +202,9 @@ impl AppState {
 
         let mut app = Self {
             graph_path: Some(graph_path),
-            layout_path: Some(layout_path),
             config_path: Some(config_path),
             graph: graph_model,
-            positions,
+            positions: HashMap::new(),
             focused_node: 0,
             selected_edge: None,
             viewport_x: 0,
@@ -774,7 +763,7 @@ impl AppState {
                             edge_idx,
                         } => {
                             if self.remove_edge_by_index(source_idx, edge_idx) {
-                                self.persist_graph_and_layout()?;
+                                self.persist_graph()?;
                                 self.status_message = Some("edge deleted".to_string());
                             }
                             self.delete_pick_idx = None;
@@ -906,7 +895,7 @@ impl AppState {
                 self.panel_focus = PanelFocus::Tree;
                 self.selected_edge = None;
                 self.details_cursor = 0;
-                self.persist_graph_and_layout()?;
+                self.persist_graph()?;
                 self.status_message = Some(if reused_existing {
                     if updated_label {
                         format!(
@@ -956,7 +945,7 @@ impl AppState {
                     .and_then(|n| n.edges.get_mut(edge_idx))
                 {
                     edge.label = new_label;
-                    self.persist_graph_and_layout()?;
+                    self.persist_graph()?;
                     self.status_message = Some("edge label updated".to_string());
                 }
                 self.mode = Mode::Normal;
@@ -978,7 +967,7 @@ impl AppState {
                 self.positions.insert(path, (x, y));
                 self.focused_node = idx;
                 self.mode = Mode::Normal;
-                self.persist_graph_and_layout()?;
+                self.persist_graph()?;
             }
             PendingTextKind::EditNodePath { node_idx } => {
                 let new_path = prompt.buffer.trim().to_string();
@@ -1004,7 +993,7 @@ impl AppState {
                     self.positions.insert(new_path, pos);
                 }
                 self.mode = Mode::Normal;
-                self.persist_graph_and_layout()?;
+                self.persist_graph()?;
                 self.status_message = Some("node path updated".to_string());
             }
         }
@@ -1383,7 +1372,7 @@ impl AppState {
 
         self.mode = Mode::Normal;
         self.detaching = None;
-        self.persist_graph_and_layout()?;
+        self.persist_graph()?;
         Ok(())
     }
 
@@ -1550,7 +1539,7 @@ impl AppState {
                 EdgeKind::Undirected => EdgeKind::Directed,
                 EdgeKind::Directed | EdgeKind::Incoming => EdgeKind::Undirected,
             };
-            self.persist_graph_and_layout()?;
+            self.persist_graph()?;
             self.status_message = Some("edge direction toggled".to_string());
         }
         Ok(())
@@ -1610,7 +1599,7 @@ impl AppState {
             self.focused_node = new_source_idx;
         }
 
-        self.persist_graph_and_layout()?;
+        self.persist_graph()?;
         self.status_message = Some("edge reversed".to_string());
         Ok(())
     }
@@ -1649,7 +1638,7 @@ impl AppState {
             self.focused_node = self.graph.nodes.len() - 1;
         }
         self.ensure_focus_visible();
-        self.persist_graph_and_layout()?;
+        self.persist_graph()?;
         self.status_message = Some(format!("deleted node {}", path));
         Ok(())
     }
@@ -1752,6 +1741,17 @@ fn tree_sort_key(path: &str) -> String {
     key
 }
 
+fn default_position_for_index(index: usize) -> (i32, i32) {
+    const COLS: usize = 5;
+    const X_START: i32 = 80;
+    const Y_START: i32 = 80;
+    const X_STEP: i32 = 160;
+    const Y_STEP: i32 = 120;
+    let col = index % COLS;
+    let row = index / COLS;
+    (X_START + col as i32 * X_STEP, Y_START + row as i32 * Y_STEP)
+}
+
 fn is_descendant_of_folder(path: &str, folder: &str) -> bool {
     path != folder && path.starts_with(folder)
 }
@@ -1761,7 +1761,7 @@ impl AppState {
         for (idx, node) in self.graph.nodes.iter().enumerate() {
             self.positions
                 .entry(node.path.clone())
-                .or_insert_with(|| layout::position_for_index(idx));
+                .or_insert_with(|| default_position_for_index(idx));
         }
         self.positions
             .retain(|path, _| self.graph.nodes.iter().any(|n| n.path == *path));
@@ -1910,7 +1910,7 @@ impl AppState {
         if self.bundled_folders.remove(&folder) {
             self.collapsed_folders.remove(&folder);
             self.status_message = Some(format!("unbundled {}", folder));
-            self.persist_graph_and_layout()?;
+            self.persist_graph()?;
             self.ensure_focus_visible();
             return Ok(());
         }
@@ -1933,7 +1933,7 @@ impl AppState {
         self.bundled_folders.insert(folder.to_string());
         self.collapsed_folders.insert(folder.to_string());
         self.clear_locked_if_hidden_by_folder(folder);
-        self.persist_graph_and_layout()?;
+        self.persist_graph()?;
         self.ensure_focus_visible();
         if removed_child_links > 0 {
             self.status_message = Some(format!(
@@ -2267,28 +2267,17 @@ impl AppState {
         )
     }
 
-    fn position_for(&self, path: &str, index_hint: usize) -> (i32, i32) {
-        self.positions
-            .get(path)
-            .copied()
-            .unwrap_or_else(|| layout::position_for_index(index_hint))
-    }
-
-    fn persist_graph_and_layout(&self) -> Result<()> {
+    fn persist_graph(&self) -> Result<()> {
         if self.demo {
             return Ok(());
         }
         let Some(graph_path) = &self.graph_path else {
             return Ok(());
         };
-        let Some(layout_path) = &self.layout_path else {
-            return Ok(());
-        };
         let existing_graph_text = fs::read_to_string(graph_path)?;
         let serialized_graph =
             merge_graph_into_document(&existing_graph_text, &self.graph, &self.bundled_folders)?;
         fs::write(graph_path, serialized_graph)?;
-        fs::write(layout_path, self.serialize_layout())?;
         Ok(())
     }
 
@@ -2320,17 +2309,6 @@ impl AppState {
         }
         Ok(())
     }
-
-    fn serialize_layout(&self) -> String {
-        let mut out = String::new();
-        out.push_str(layout::HEADER);
-        out.push('\n');
-        for (idx, node) in self.graph.nodes.iter().enumerate() {
-            let (x, y) = self.position_for(&node.path, idx);
-            out.push_str(&format!("{:<40} x:{:<6} y:{}\n", node.path, x, y));
-        }
-        out
-    }
 }
 
 pub fn run(demo: bool, open_settings: bool) -> Result<()> {
@@ -2359,7 +2337,7 @@ pub fn run(demo: bool, open_settings: bool) -> Result<()> {
         }
     }
 
-    app.persist_graph_and_layout()?;
+    app.persist_graph()?;
     app.normalize_graph_file_post_view()?;
     Ok(())
 }

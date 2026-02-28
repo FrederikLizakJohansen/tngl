@@ -8,7 +8,7 @@ use anyhow::{Result, bail};
 use crossterm::style::Stylize;
 
 use crate::graph::model::{Graph, Node};
-use crate::parser::{config, graph, layout};
+use crate::parser::{config, graph};
 use crate::scanner::tree;
 use crate::tangle;
 
@@ -62,11 +62,6 @@ pub fn run_in(root: &Path, accept_hooks: Option<bool>) -> Result<()> {
     fs::write(tangle_dir.join("graph.tngl"), &graph_contents)?;
     println!("  {} tangle/graph.tngl", "Created".green().bold());
 
-    // layout.tngl
-    let layout_contents = layout::generate(&paths);
-    fs::write(tangle_dir.join("layout.tngl"), &layout_contents)?;
-    println!("  {} tangle/layout.tngl", "Created".green().bold());
-
     // config.tngl
     fs::write(tangle_dir.join("config.tngl"), config::DEFAULT_CONTENTS)?;
     println!("  {} tangle/config.tngl", "Created".green().bold());
@@ -84,12 +79,6 @@ pub fn run_in(root: &Path, accept_hooks: Option<bool>) -> Result<()> {
         fs::write(&wrapper_path, WRAPPER_SCRIPT)?;
         set_executable(&wrapper_path)?;
         println!("  {} tngl (wrapper script)", "Created".green().bold());
-    }
-
-    // Append layout comment to .gitignore (if it exists and doesn't have it yet)
-    let gitignore_path = root.join(".gitignore");
-    if gitignore_path.exists() {
-        append_gitignore_comment(&gitignore_path)?;
     }
 
     // Git hooks
@@ -128,18 +117,6 @@ fn install_git_hooks(root: &Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn append_gitignore_comment(gitignore_path: &Path) -> Result<()> {
-    let contents = fs::read_to_string(gitignore_path)?;
-    if contents.contains("tangle/layout.tngl") {
-        return Ok(()); // already present
-    }
-    let suffix = if contents.ends_with('\n') { "" } else { "\n" };
-    let addition = format!("{}{}", suffix, GITIGNORE_ADDITION);
-    let mut file = fs::OpenOptions::new().append(true).open(gitignore_path)?;
-    file.write_all(addition.as_bytes())?;
-    Ok(())
-}
 
 fn prompt_yes_no(prompt: &str) -> Result<bool> {
     print!("{}", prompt);
@@ -198,11 +175,6 @@ fi
 
 const GIT_HOOK_CONTENT: &str = "#!/bin/sh\ntngl update --silent\n";
 
-const GITIGNORE_ADDITION: &str = "\
-# tngl layout (optional — remove to share layout with team)
-# tangle/layout.tngl
-";
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -249,15 +221,6 @@ mod tests {
         // No edge lines (no -> or -- after init)
         assert!(!content.contains("->"));
         assert!(!content.contains("--"));
-    }
-
-    #[test]
-    fn creates_layout_tngl() {
-        let dir = setup(&["src/main.rs"]);
-        run_in(dir.path(), Some(false)).unwrap();
-        let content = fs::read_to_string(dir.path().join("tangle/layout.tngl")).unwrap();
-        assert!(content.contains("x:"));
-        assert!(content.contains("y:"));
     }
 
     #[test]
@@ -312,28 +275,6 @@ mod tests {
         run_in(dir.path(), Some(false)).unwrap();
         let content = fs::read_to_string(dir.path().join("tngl")).unwrap();
         assert_eq!(content, "custom content");
-    }
-
-    #[test]
-    fn appends_gitignore_comment() {
-        let dir = setup(&[]);
-        fs::write(dir.path().join(".gitignore"), "target/\n").unwrap();
-        run_in(dir.path(), Some(false)).unwrap();
-        let content = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
-        assert!(content.contains("tangle/layout.tngl"));
-    }
-
-    #[test]
-    fn does_not_duplicate_gitignore_comment() {
-        let dir = setup(&[]);
-        fs::write(
-            dir.path().join(".gitignore"),
-            "target/\n# tangle/layout.tngl\n",
-        )
-        .unwrap();
-        run_in(dir.path(), Some(false)).unwrap();
-        let content = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
-        assert_eq!(content.matches("tangle/layout.tngl").count(), 1);
     }
 
     #[test]

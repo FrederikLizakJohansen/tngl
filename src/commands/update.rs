@@ -9,7 +9,7 @@ use crossterm::style::Stylize;
 
 use crate::graph::model::{EdgeKind, Graph, Node};
 use crate::parser::config::{Config, OnDelete};
-use crate::parser::{config, graph, layout};
+use crate::parser::{config, graph};
 use crate::scanner::{diff, tree};
 use crate::tangle;
 
@@ -301,20 +301,6 @@ fn run_in_with_options(
     // Write graph.tngl only when something changed.
     if graph_changed {
         fs::write(&graph_path, graph::serialize(&doc))?;
-    }
-
-    // Keep layout.tngl aligned with graph.tngl for additions and removals.
-    if graph_changed {
-        let layout_path = tangle::layout_path(root);
-        if layout_path.exists() {
-            let existing = fs::read_to_string(&layout_path)?;
-            let final_graph = graph::to_graph(&doc)?;
-            let paths: Vec<String> = final_graph.nodes.iter().map(|n| n.path.clone()).collect();
-            let updated = layout::reconcile(&existing, &paths);
-            if updated != existing {
-                fs::write(&layout_path, updated)?;
-            }
-        }
     }
 
     Ok(())
@@ -1017,45 +1003,6 @@ mod tests {
     }
 
     #[test]
-    fn updates_layout_tngl_for_new_files() {
-        let dir = init_repo(&["a.rs", "b.rs"], "a.rs\n", "on_delete: delete\n");
-        // Create a layout.tngl with just a.rs
-        sfs::write(
-            dir.path().join("tangle/layout.tngl"),
-            format!(
-                "{}\na.rs                                     x:80   y:80\n",
-                layout::HEADER
-            ),
-        )
-        .unwrap();
-        run_in(dir.path(), true, None).unwrap();
-        let layout_content = sfs::read_to_string(dir.path().join("tangle/layout.tngl")).unwrap();
-        assert!(
-            layout_content.contains("b.rs"),
-            "layout should include new node b.rs"
-        );
-    }
-
-    #[test]
-    fn removes_layout_entries_for_removed_nodes() {
-        let dir = init_repo(&["a.rs"], "a.rs\n\nb.rs\n", "on_delete: delete\n");
-        sfs::write(
-            dir.path().join("tangle/layout.tngl"),
-            format!(
-                "{}\na.rs                                     x:80   y:80\nb.rs                                     x:240  y:80\n",
-                layout::HEADER
-            ),
-        )
-        .unwrap();
-
-        run_in(dir.path(), true, None).unwrap();
-
-        let layout_content = sfs::read_to_string(dir.path().join("tangle/layout.tngl")).unwrap();
-        assert!(layout_content.contains("a.rs"));
-        assert!(!layout_content.contains("b.rs"));
-    }
-
-    #[test]
     fn ignored_child_removal_preserves_blank_line_spacing() {
         let dir = init_repo(
             &["src/a/file1.rs", "src/b/file2.rs"],
@@ -1088,14 +1035,6 @@ mod tests {
             after_a.contains("    src/b/\n"),
             "expected sibling folder to remain after spacing separator: {content}"
         );
-    }
-
-    #[test]
-    fn does_not_create_layout_if_absent() {
-        let dir = init_repo(&["a.rs", "b.rs"], "a.rs\n", "on_delete: delete\n");
-        // No layout.tngl pre-exists
-        run_in(dir.path(), true, None).unwrap();
-        assert!(!dir.path().join("tangle/layout.tngl").exists());
     }
 
     #[test]

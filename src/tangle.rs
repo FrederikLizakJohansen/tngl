@@ -36,10 +36,6 @@ pub fn config_path(root: &Path) -> PathBuf {
     root.join("tangle").join("config.tngl")
 }
 
-pub fn layout_path(root: &Path) -> PathBuf {
-    root.join("tangle").join("layout.tngl")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
