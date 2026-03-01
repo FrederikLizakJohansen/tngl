@@ -8,13 +8,27 @@
 
         relational graph for your repository
 
-`tngl` is a repo-native, human-authored graph for code relationships.
+`tngl` is a repo-native, human-authored graph for relationships between code, data, and figures.
 
 - Nodes are files/folders.
 - Edges are tangles between nodes.
 - The graph lives in `tangle/graph.tngl` and is designed to be edited by humans.
 - An integrated TUI makes it easy and intuitive to keep track of file dependencies.
 <img width="1274" height="804" alt="image" src="https://github.com/user-attachments/assets/3f98672a-1f05-4602-87a7-765fe84ac628" />
+
+## Why This Exists
+
+I started `tngl` while writing a data management plan for a research group. I kept running into the same issue: making project outputs FAIR (Findable, Accessible, Interoperable, Reusable) is only part of the challenge. Even when datasets, scripts, and figures are shared and archived correctly, people receiving a frozen project snapshot often struggle to understand what depends on what.
+
+In strongly documented software repositories this is usually manageable. But many research repositories are built while experiments are running and papers are being written, often by experimentalists rather than software engineers. In those cases, code and data evolve together quickly, and the relationships can be hard to reconstruct later.
+
+This project began as a fast way to visualize the flow between data and scripts. It then grew into a full TUI tool for organizing those relationships in a way that stays readable for collaborators, reviewers, and my future self.
+
+## Why It's Useful
+
+- Makes hidden data-script-figure dependencies visible.
+- Helps newcomers navigate archived or handed-over research projects.
+- Preserves project context in a lightweight, human-editable format.
 
 ## Install
 
