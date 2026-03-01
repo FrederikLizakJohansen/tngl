@@ -7,27 +7,30 @@
    ╚═╝   ╚═╝  ╚══╝ ╚═════╝ ╚══════╝
 </pre>
 
-`tngl` is a repo-native, human-authored graph for relationships between code, data, and figures.
+`tngl` is a repo-native, human-authored graph for understanding how files and folders relate.
+
+A `tngl` graph is simple and durable:
 
 - Nodes are files/folders.
-- Edges are tangles between nodes.
-- The graph lives in `tangle/graph.tngl` and is designed to be edited by humans.
-- An integrated TUI makes it easy and intuitive to keep track of file dependencies.
-<img width="1274" height="804" alt="image" src="https://github.com/user-attachments/assets/3f98672a-1f05-4602-87a7-765fe84ac628" />
+- Edges are tangles (relationships between nodes).
+- The source of truth is `tangle/graph.tngl`.
+- The TUI is optimized for fast maintenance as projects evolve.
 
-## Why This Exists
+<figure>
+  <img width="1274" height="804" alt="tngl TUI showing tree, details, and colored relationship routes" src="https://github.com/user-attachments/assets/3f98672a-1f05-4602-87a7-765fe84ac628" />
+  <figcaption><em>tngl view: interactive tree + details workflow for building and maintaining relationship maps.</em></figcaption>
+</figure>
 
-I started `tngl` while writing a data management plan for a research group. I kept running into the same issue: making project outputs FAIR (Findable, Accessible, Interoperable, Reusable) is only part of the challenge. Even when datasets, scripts, and figures are shared and archived correctly, people receiving a frozen project snapshot often struggle to understand what depends on what.
+## Why tngl
 
-In strongly documented software repositories this is usually manageable. But many research repositories are built while experiments are running and papers are being written, often by experimentalists rather than software engineers. In those cases, code and data evolve together quickly, and the relationships can be hard to reconstruct later.
+Most repos explain what files exist, but not how outputs depend on each other.
+`tngl` makes those dependencies explicit in a format that is both human-editable and tool-aware.
 
-This project began as a fast way to visualize the flow between data and scripts. It then grew into a full TUI tool for organizing those relationships in a way that stays readable for collaborators, reviewers, and my future self.
+It is especially useful when:
 
-## Why It's Useful
-
-- Makes hidden data-script-figure dependencies visible.
-- Helps newcomers navigate archived or handed-over research projects.
-- Preserves project context in a lightweight, human-editable format.
+- onboarding collaborators into an unfamiliar repo,
+- handing over project snapshots,
+- auditing drift between filesystem state and documented relationships.
 
 ## Install
 
@@ -37,13 +40,13 @@ From crates.io (recommended):
 cargo install tngl
 ```
 
-Upgrade to latest published version:
+Upgrade:
 
 ```bash
 cargo install tngl --force
 ```
 
-From source (dev/local):
+From source:
 
 ```bash
 git clone git@github.com:FrederikLizakJohansen/tngl.git
@@ -65,215 +68,52 @@ Inside the repo you want to map:
 tngl init
 tngl view
 tngl status
-tngl inspect --orphans
-```
-
-`init` also creates a local `./tngl` wrapper script in that repo, so collaborators can run `./tngl ...`.
-
-## Core Files
-
-- `tangle/graph.tngl`: graph source of truth (nodes + edges + tags)
-- `tangle/config.tngl`: runtime/config behavior
-- `.tnglignore`: extra scan ignores for `tngl update`
-
-## CLI Reference
-
-```bash
-tngl init
-tngl update [--silent]
-tngl status
-tngl inspect --orphans|--dangling|--edges <node>|--unreachable|--comment-mismatches|--reconcile-comments
-tngl mark-orphans
-tngl list
-tngl edit
-tngl view [--demo]
-tngl setup
 tngl open
 ```
 
-### What Each Command Does
+`tngl init` also creates a local `./tngl` wrapper script so collaborators can run `./tngl ...` directly in that repo.
 
-- `init`: bootstrap `tangle/`, scan filesystem, write graph/config/ignore/wrapper.
-- `update`: reconcile graph against filesystem (`on_delete` strategy applies).
-- `status`: read-only drift and quality report.
-- `inspect`: targeted graph audits.
-- `mark-orphans`: marks unattended isolated nodes as intentional in graph tags.
-- `list`: print all tangles in graph order.
-- `edit`: open `tangle/graph.tngl` in configured editor.
-- `view`: interactive TUI (main editing UX).
-- `setup`: opens settings panel directly.
-- `open`: reserved for static HTML export, currently not implemented.
+## Command Reference
 
-### When To Run `tngl update`
+| Command | Purpose |
+| --- | --- |
+| `tngl init` | Bootstrap `tangle/`, scan repo, write graph/config/ignore/wrapper. |
+| `tngl update [--silent]` | Reconcile graph against filesystem changes. |
+| `tngl status` | Read-only drift and graph-quality report. |
+| `tngl inspect ...` | Targeted graph audits (orphans, dangling, edges, mismatch checks). |
+| `tngl mark-orphans` | Mark unattended isolated nodes as intentional in graph tags. |
+| `tngl list` | Print all tangles in graph order. |
+| `tngl edit` | Open `tangle/graph.tngl` in your configured editor. |
+| `tngl view [--demo]` | Launch interactive TUI editor. |
+| `tngl setup` | Open settings panel directly. |
+| `tngl open` | Export static HTML map and attempt browser open. |
 
-You still use `update` when the repository structure changed outside TUI editing, for example:
-
-- files/folders were added, moved, or deleted
-- you merged/pulled a branch with path changes
-- you want reconciliation/lint cleanup applied to `graph.tngl`
-
-If you only edited relationships in `tngl view`, those writes are already persisted directly to `graph.tngl`.
-
-## TUI Guide (Full)
-
-Launch:
+## Static HTML Map (`tngl open`)
 
 ```bash
-tngl view
+tngl open
 ```
 
-Demo mode (no repo required, in-memory edits only):
+What it does:
 
-```bash
-tngl view --demo
-```
+- writes `tangle/map.html`,
+- attempts to open it in your default browser,
+- keeps export read-only,
+- supports click and `↑/↓` navigation in the page details view.
 
-Settings only:
+If browser auto-open is unavailable in the current environment, the HTML export is still generated.
 
-```bash
-tngl setup
-```
+## Core Files
 
-### Layout
-
-The UI has three major areas:
-
-- `TREE` (left): filesystem tree with connection markers and folder fold/bundle state.
-- `DETAILS` (right): focused node info + connected tangles + action row.
-- Bottom status/description bar: selected node summary + context-sensitive key hints.
-
-Mode badges appear in title/status when active:
-
-- `CREATE` (green)
-- `DELETE` (red)
-- `MOVE` (blue)
-
-### Visual Language
-
-Connection markers:
-
-- `▶` out
-- `◀` in
-- `◆` undirected/reference
-
-Folder markers in tree:
-
-- `▾` expanded
-- `▸` collapsed
-- `▣` bundled/locked
-
-Node/path cues:
-
-- Focused node path is highlighted.
-- In detail mode, selected edge is highlighted in both tree route and details list.
-
-### Contexts and Flows
-
-#### 1) Tree Context (default)
-
-Main navigation/edit context.
-
-- Move focus: `j/k` or `↑/↓`
-- Open details for focused node: `Enter`
-- Fold/unfold focused folder: `z`
-- Bundle/unbundle focused folder: `b`
-- Start create flow from focused node: `c`
-- Start edge delete picker: `d`
-- Cycle line overlay filter (`off/all/in/out/ref`): `f`
-- Toggle orphan visibility: `o`
-- Add node: `n`
-- Edit node path: `e`
-- Delete node (confirm): `D`
-- Next node: `Tab`
-- Zoom in/out: `+` / `-`
-- Help: `?`
-- Setup popup: `s`
-- Quit: `q`
-
-#### 2) Details Context
-
-Entered with `Enter` from tree.
-
-- Navigate tangle list: `↑/↓`
-- `Enter`: no action in details mode
-- Delete tangle at cursor: `d`
-- Start move flow: `m`
-- Start create flow: `c`
-- Edit selected edge label: `l`
-- Toggle edge kind directed/undirected: `t`
-- Reverse directed edge direction: `r`
-- Delete focused node (confirm): `D`
-- Toggle orphan visibility: `o`
-- Cycle line overlay filter: `f`
-- Back to tree: `Esc` or `Backspace`
-
-#### 3) CREATE Flow
-
-Start from tree (`c`) or details (`c`).
-
-- Pick target node: `↑/↓`
-- Change edge type (`in/out/ref`): `←/→`
-- Fold/unfold folders while selecting: `z`
-- Confirm target/type and open comment popup: `Enter`
-- Cancel CREATE: `Esc` or `Backspace`
-
-Important CREATE guard:
-
-- While creating from a folder/source path, you cannot collapse that source folder or its parents.
-
-#### 4) Comment Popup (during CREATE)
-
-After choosing source/target/type:
-
-- Type label/comment text directly
-- Move caret: `←/→`
-- Delete character: `Backspace`
-- Save edge: `Enter`
-- Go back to CREATE selection: `Esc`
-
-#### 5) DELETE Flow
-
-From tree, press `d`.
-
-- Cycle candidate tangles: `j/k` or `↑/↓`
-- Confirm deletion prompt: `Enter`
-- Cancel delete mode: `Esc` or `Backspace`
-
-#### 6) MOVE Flow (Edge Reroute)
-
-In details mode, hover an edge and press `m`.
-
-- This grabs the opposite endpoint relative to the details anchor node.
-- Move focus to the replacement node with `↑/↓`.
-- Change tangle type with `←/→`.
-- Apply move with `Enter`.
-- Cancel with `Esc` or `Backspace`.
-- Moving onto the other endpoint is blocked (no self-loop moves).
-
-#### 7) Bundle Flow
-
-From tree on a folder, press `b`.
-
-- Bundling locks/collapses folder (`[bundle]` behavior).
-- If child links exist, you get a warning/confirm prompt before pruning those links.
-- Unbundle with `b` again.
-
-#### 8) Confirm Prompts
-
-Used for destructive actions (delete edge/node, bundle-prune).
-
-- Confirm: `y` or `Enter`
-- Cancel: `n`, `Esc`, or `Backspace`
-
-### TUI Behavior Worth Knowing
-
-- Changes made in TUI are written back to `tangle/graph.tngl`.
-- On exit, graph formatting/normalization is also applied.
-- If `auto_reveal_links` is enabled, collapsed folders that hide currently relevant links can open transiently while focused, then close again when focus changes.
+| File | Role |
+| --- | --- |
+| `tangle/graph.tngl` | Graph source of truth (nodes, edges, tags). |
+| `tangle/config.tngl` | Runtime behavior and preferences. |
+| `.tnglignore` | Extra scan ignores used by `tngl update` and `tngl open`. |
 
 ## `graph.tngl` Format
 
-Basic structure:
+Minimal example:
 
 ```tngl
 src/main.rs
@@ -283,14 +123,14 @@ src/main.rs
 
 Rules:
 
-- Node line: non-indented path.
-- Edge line: indented under source node.
-- Edge operators: `->`, `<-`, `--`.
-- `:` is required after target (label can be empty).
-- Folder nodes end with `/`.
-- Comments start with `#`.
+- node line: non-indented path,
+- edge line: indented under source node,
+- edge operators: `->`, `<-`, `--`,
+- `:` required after target (label may be empty),
+- folder nodes end with `/`,
+- comments start with `#`.
 
-Tags supported in graph:
+Supported tags:
 
 - `[orphan]`
 - `[bundle]`
@@ -307,39 +147,18 @@ Supported keys:
 - `editor: <command>`
 - `warn_uncommented_edges: true|false`
 
-`setup` popup currently exposes these toggles directly:
+`setup` currently exposes:
 
 - reveal linked paths (`auto_reveal_links`)
 - git hook updates (`git_hooks`)
 - warn blank comments (`warn_uncommented_edges`)
 
-## Typical Workflows
+## TUI Guide
 
-### Map a repo from scratch
+The full TUI guide (layout, keymaps, CREATE/DELETE/MOVE flows, and behavior notes) is now maintained in:
 
-```bash
-tngl init
-tngl view
-# add/edit tangles interactively
-tngl status
-```
-
-### Audit graph quality
-
-```bash
-tngl status
-tngl inspect --dangling
-tngl inspect --comment-mismatches
-```
-
-### Keep things current after file churn
-
-```bash
-tngl update
-tngl status
-```
+- [`src/tui/TUI_GUIDE.md`](src/tui/TUI_GUIDE.md)
 
 ## Current Limitations
 
-- `tngl open` is not implemented yet.
-- This is terminal-first; no web UI export path currently ships.
+- Static export is read-only (`tngl open` writes `tangle/map.html`).

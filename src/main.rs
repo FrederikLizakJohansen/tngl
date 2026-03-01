@@ -77,7 +77,7 @@ enum Command {
         #[arg(long)]
         demo: bool,
     },
-    /// Reserved for static HTML export (currently not implemented)
+    /// Export a static HTML map to tangle/map.html
     Open,
     /// Open the TUI settings panel
     Setup,

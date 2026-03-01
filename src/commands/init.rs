@@ -149,10 +149,8 @@ fn set_executable(_path: &Path) -> Result<()> {
 
 const TNGLIGNORE_DEFAULTS: &str = "\
 # .tnglignore
-node_modules/
-dist/
-*.log
-coverage/
+# Additional scan ignores for tngl update/open (gitignore syntax).
+# Add project-specific patterns below, one per line.
 ";
 
 const WRAPPER_SCRIPT: &str = "\
@@ -237,7 +235,8 @@ mod tests {
         run_in(dir.path(), Some(false)).unwrap();
         assert!(dir.path().join(".tnglignore").exists());
         let content = fs::read_to_string(dir.path().join(".tnglignore")).unwrap();
-        assert!(content.contains("node_modules/"));
+        assert!(content.contains("# .tnglignore"));
+        assert!(content.contains("Add project-specific patterns"));
     }
 
     #[test]
@@ -248,7 +247,7 @@ mod tests {
         let content = fs::read_to_string(dir.path().join(".tnglignore")).unwrap();
         // Custom content preserved, defaults NOT added
         assert!(content.contains("my_custom_rule/"));
-        assert!(!content.contains("node_modules/"));
+        assert!(!content.contains("Add project-specific patterns"));
     }
 
     #[test]

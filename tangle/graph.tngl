@@ -5,13 +5,13 @@
     .claude/settings.local.json
 
 src/
-    -> src/main.rs : crate entrypoint and CLI wiring
+    -> src/main.rs : crate entrypoint and CLI wiring; paired context: crate root entrypoint
 
     src/commands/
         -> src/commands/mod.rs : subcommand module registry
 
         src/commands/mod.rs
-            -- src/main.rs : imported by CLI for command dispatch
+            -- src/main.rs : imported by CLI for command dispatch; paired context: CLI command wiring and dispatch
             -> src/commands/init.rs : init command module
             -> src/commands/update.rs : update command module
             -> src/commands/status.rs : status command module
@@ -20,192 +20,139 @@ src/
             -> src/commands/list.rs : list command module
             -> src/commands/edit.rs : edit command module
             -> src/commands/view.rs : view and setup command module
-            -> src/commands/open.rs : reserved open command module
+            -> src/commands/open.rs : static HTML export/open command module
 
         src/commands/edit.rs
-            -> src/tangle.rs : resolves graph/config paths
-            -> src/parser/config.rs : resolves preferred editor
+            -> src/tangle.rs : resolves graph/config paths; paired context: graph/config path lookup
+            -> src/parser/config.rs : resolves preferred editor; paired context: configured editor resolution
 
         src/commands/init.rs
-            -> src/scanner/tree.rs : scans repository tree for bootstrap nodes
-            -> src/parser/graph.rs : serializes initial graph document
-            -> src/parser/config.rs : writes default config
-            -> src/tangle.rs : resolves tangle directory paths
+            -> src/scanner/tree.rs : scans repository tree for bootstrap nodes; paired context: bootstrap scan
+            -> src/parser/graph.rs : serializes initial graph document; paired context: initial graph generation
+            -> src/parser/config.rs : writes default config; paired context: default config generation
+            -> src/tangle.rs : resolves tangle directory paths; paired context: tangle path helpers
 
         src/commands/inspect.rs
-            -> src/parser/graph.rs : parses graph document for queries
-            -> src/graph/model.rs : traverses graph/edge model
-            -> src/tangle.rs : finds active repo root
+            -> src/parser/graph.rs : parses graph document for queries; paired context: query source document
+            -> src/graph/model.rs : traverses graph/edge model; paired context: query traversal over graph model
+            -> src/tangle.rs : finds active repo root; paired context: repo root lookup
 
         src/commands/intentionalize_orphans.rs
-            -> src/parser/graph.rs : marks unattended isolated nodes
-            -> src/tangle.rs : locates graph file
+            -> src/parser/graph.rs : marks unattended isolated nodes; paired context: orphan marker updates
+            -> src/tangle.rs : locates graph file; paired context: graph path lookup
 
         src/commands/list.rs
-            -> src/parser/graph.rs : parses graph for listing
-            -> src/graph/model.rs : iterates edge model in graph order
-            -> src/tangle.rs : locates graph file
+            -> src/parser/graph.rs : parses graph for listing; paired context: listing source parse
+            -> src/graph/model.rs : iterates edge model in graph order; paired context: edge listing over model
+            -> src/tangle.rs : locates graph file; paired context: graph path lookup
 
         src/commands/open.rs
-            <- src/main.rs : dispatched by CLI as reserved/not-implemented command
+            <- src/main.rs : dispatched by CLI to export map.html and open it in a browser
 
         src/commands/status.rs
             -> src/commands/update.rs : reuses update preview logic
-            -> src/scanner/tree.rs : scans filesystem state
-            -> src/scanner/diff.rs : computes filesystem-vs-graph differences
-            -> src/parser/config.rs : reads status warning settings
-            -> src/parser/graph.rs : parses tags and graph content
-            -> src/graph/model.rs : traverses edge state
-            -> src/tangle.rs : locates graph/config files
+            -> src/scanner/tree.rs : scans filesystem state; paired context: status scan
+            -> src/scanner/diff.rs : computes filesystem-vs-graph differences; paired context: status diffing
+            -> src/parser/config.rs : reads status warning settings; paired context: reads status flags
+            -> src/parser/graph.rs : parses tags and graph content; paired context: tag/query parse
+            -> src/graph/model.rs : traverses edge state; paired context: drift checks over model
+            -> src/tangle.rs : locates graph/config files; paired context: graph/config path lookup
 
         src/commands/update.rs
-            -> src/scanner/tree.rs : scans current filesystem nodes
-            -> src/scanner/diff.rs : computes additions and removals
-            -> src/parser/config.rs : reads reconcile behavior
-            -> src/parser/graph.rs : mutates graph document
-            -> src/graph/model.rs : applies graph-level mutations
-            -> src/tangle.rs : resolves graph/config file paths
+            -> src/scanner/tree.rs : scans current filesystem nodes; paired context: reconciliation scan
+            -> src/scanner/diff.rs : computes additions and removals; paired context: update reconciliation diffing
+            -> src/parser/config.rs : reads reconcile behavior; paired context: reads update behavior
+            -> src/parser/graph.rs : mutates graph document; paired context: reconcile mutations
+            -> src/graph/model.rs : applies graph-level mutations; paired context: mutation target model
+            -> src/tangle.rs : resolves graph/config file paths; paired context: graph/config path lookup
 
         src/commands/view.rs
-            -> src/tui/canvas.rs : launches interactive TUI
+            -> src/tui/canvas.rs : launches interactive TUI; paired context: launched by view/setup commands
 
     src/graph/
         -> src/graph/mod.rs : graph namespace module
 
         src/graph/mod.rs
             -> src/graph/model.rs : exports graph data model
-            <- src/main.rs : linked from crate root
+            <- src/main.rs : linked from crate root; paired context: graph module linkage
 
         src/graph/model.rs
-            <- src/commands/inspect.rs : query traversal over graph model
-            <- src/commands/list.rs : edge listing over model
-            <- src/commands/status.rs : drift checks over model
-            <- src/commands/update.rs : mutation target model
-            <- src/parser/graph.rs : parser round-trips into model
-            <- src/tui/canvas.rs : view/edit runtime model
-            <- src/tui/render.rs : rendering relation kinds/icons
+            <- src/parser/graph.rs : parser round-trips into model; paired context: parser <-> model conversion
+            <- src/tui/canvas.rs : view/edit runtime model; paired context: in-memory graph state
+            <- src/tui/render.rs : rendering relation kinds/icons; paired context: EdgeKind drives relation rendering
 
     src/parser/
         -> src/parser/mod.rs : parser namespace module
 
         src/parser/config.rs
-            <- src/commands/edit.rs : configured editor resolution
-            <- src/commands/init.rs : default config generation
-            <- src/commands/status.rs : reads status flags
-            <- src/commands/update.rs : reads update behavior
-            <- src/tui/canvas.rs : runtime settings state
-            <- src/tui/settings.rs : setup panel serialization
-            <- src/parser/mod.rs : config parser export
+            <- src/tui/canvas.rs : runtime settings state; paired context: reads/writes config values
+            <- src/tui/settings.rs : setup panel serialization; paired context: serializes setup toggles into config
+            <- src/parser/mod.rs : config parser export; paired context: exports config parser
 
         src/parser/graph.rs
-            -> src/graph/model.rs : parser <-> model conversion
-            <- src/commands/init.rs : initial graph generation
-            <- src/commands/inspect.rs : query source document
-            <- src/commands/intentionalize_orphans.rs : orphan marker updates
-            <- src/commands/list.rs : listing source parse
-            <- src/commands/status.rs : tag/query parse
-            <- src/commands/update.rs : reconcile mutations
-            <- src/tui/canvas.rs : view writes and normalization
-            <- src/parser/mod.rs : graph parser export
+            <- src/tui/canvas.rs : view writes and normalization; paired context: persists graph edits
+            <- src/parser/mod.rs : graph parser export; paired context: exports graph parser
 
         src/parser/mod.rs
-            -> src/parser/config.rs : exports config parser
-            -> src/parser/graph.rs : exports graph parser
-            <- src/main.rs : linked from crate root
+            <- src/main.rs : linked from crate root; paired context: parser module linkage
 
     src/scanner/
         -> src/scanner/mod.rs : scanner namespace module
 
         src/scanner/diff.rs
             -> src/graph/model.rs : diff against graph model
-            <- src/commands/status.rs : status diffing
-            <- src/commands/update.rs : update reconciliation diffing
-            <- src/scanner/mod.rs : diff scanner export
+            <- src/scanner/mod.rs : diff scanner export; paired context: exports diff scanner
 
         src/scanner/mod.rs
-            -> src/scanner/tree.rs : exports tree scanner
-            -> src/scanner/diff.rs : exports diff scanner
-            <- src/main.rs : linked from crate root
+            -> src/scanner/tree.rs : exports tree scanner; paired context: tree scanner export
+            <- src/main.rs : linked from crate root; paired context: scanner module linkage
 
         src/scanner/tree.rs
-            <- src/commands/init.rs : bootstrap scan
-            <- src/commands/status.rs : status scan
-            <- src/commands/update.rs : reconciliation scan
-            <- src/scanner/mod.rs : tree scanner export
-            <- .gitignore : ignore rules affect scan output
+            <- .gitignore : ignore rules affect scan output; paired context: ignore patterns influence scanning
 
     src/tui/
         -> src/tui/mod.rs : tui namespace module
 
         src/tui/canvas.rs
-            -> src/tui/input.rs : maps keys to actions
-            -> src/tui/render.rs : draws tree/details/status/help
-            -> src/tui/settings.rs : setup popup behavior
-            -> src/parser/graph.rs : persists graph edits
-            -> src/parser/config.rs : reads/writes config values
-            -> src/graph/model.rs : in-memory graph state
-            -> src/tangle.rs : resolves repo graph/config paths
-            <- src/commands/view.rs : launched by view/setup commands
+            -> src/tui/input.rs : maps keys to actions; paired context: action mapping consumed by state machine
+            -> src/tui/render.rs : draws tree/details/status/help; paired context: receives render data from app state
+            -> src/tui/settings.rs : setup popup behavior; paired context: setup panel host and event loop
+            -> src/tangle.rs : resolves repo graph/config paths; paired context: view persist path lookup
 
         src/tui/input.rs
-            <- src/tui/canvas.rs : action mapping consumed by state machine
 
         src/tui/mod.rs
             -> src/tui/canvas.rs : exports canvas module
             -> src/tui/input.rs : exports input module
             -> src/tui/render.rs : exports render module
             -> src/tui/settings.rs : exports settings module
-            <- src/main.rs : linked from crate root
+            <- src/main.rs : linked from crate root; paired context: tui module linkage
 
         src/tui/render.rs
-            -> src/graph/model.rs : EdgeKind drives relation rendering
-            <- src/tui/canvas.rs : receives render data from app state
 
         src/tui/settings.rs
-            -> src/parser/config.rs : serializes setup toggles into config
-            <- src/tui/canvas.rs : setup panel host and event loop
 
     src/main.rs
-        -> src/commands/mod.rs : CLI command wiring and dispatch
-        -> src/graph/mod.rs : graph module linkage
-        -> src/parser/mod.rs : parser module linkage
-        -> src/scanner/mod.rs : scanner module linkage
-        -> src/tangle.rs : repo root and tangle path helpers
-        -> src/tui/mod.rs : tui module linkage
-        <- src/ : crate root entrypoint
-        <- Cargo.toml : binary target points here
+        -> src/tangle.rs : repo root and tangle path helpers; paired context: root discovery plumbing
+        <- Cargo.toml : binary target points here; paired context: binary entrypoint declaration
 
     src/tangle.rs
-        <- src/commands/edit.rs : graph/config path lookup
-        <- src/commands/init.rs : tangle path helpers
-        <- src/commands/inspect.rs : repo root lookup
-        <- src/commands/intentionalize_orphans.rs : graph path lookup
-        <- src/commands/list.rs : graph path lookup
-        <- src/commands/status.rs : graph/config path lookup
-        <- src/commands/update.rs : graph/config path lookup
-        <- src/tui/canvas.rs : view persist path lookup
-        <- src/main.rs : root discovery plumbing
 
 .gitignore
-    -> src/scanner/tree.rs : ignore patterns influence scanning
     <- README.md : documented repo hygiene
 
 [orphan]
 Cargo.lock
 
 Cargo.toml
-    -> src/main.rs : binary entrypoint declaration
+
+[orphan]
+LICENSE
 
 README.md
-    -- tngl-spec.md : guide and spec cross-reference
     -> src/tui/canvas.rs : describes TUI workflows and behaviors
     -> src/tui/input.rs : documents active keymap
     -> src/parser/config.rs : documents config keys and setup behavior
     -> src/commands/update.rs : documents reconcile semantics
     -> src/commands/status.rs : documents audit/report semantics
     -> src/commands/view.rs : documents view/setup entrypoints
-
-tngl-spec.md
-    -- README.md : concise spec and practical guide alignment
-    -> src/parser/graph.rs : format and marker semantics
-    -> src/parser/config.rs : config key semantics

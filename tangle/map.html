@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tngl map</title>
+  <style>
+    :root {
+      --bg: #0b1118;
+      --panel: #101823;
+      --panel-border: #3a495d;
+      --text: #e7eef7;
+      --muted: #7f90a5;
+      --folder: #39c5f6;
+      --focus-bg: #facc15;
+      --focus-fg: #131313;
+      --accent: #22d3ee;
+      --warn: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      background: radial-gradient(circle at top right, #1b2a3d 0%, var(--bg) 45%);
+      color: var(--text);
+      font: 15px/1.25 "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .frame {
+      border: 2px double var(--panel-border);
+      border-radius: 10px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent);
+      max-width: 1760px;
+      margin: 0 auto;
+    }
+    .title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+    .title strong { font-size: 16px; letter-spacing: 0.04em; }
+    .title span { color: var(--muted); font-size: 13px; }
+    .panes {
+      display: grid;
+      grid-template-columns: minmax(420px, 58%) minmax(320px, 42%);
+      gap: 12px;
+      min-height: 60vh;
+    }
+    .panel {
+      border: 1px solid var(--panel-border);
+      border-radius: 9px;
+      padding: 10px;
+      background: color-mix(in srgb, var(--panel) 88%, black);
+      overflow: auto;
+    }
+    .panel h2 {
+      margin: 0 0 8px 0;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #243243;
+      padding-bottom: 6px;
+    }
+    .tree-wrap {
+      min-height: 360px;
+    }
+    .tree-svg {
+      width: 100%;
+      display: block;
+      outline: none;
+    }
+    .tree-svg text {
+      font: 15px/1 "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      dominant-baseline: alphabetic;
+      white-space: pre;
+      user-select: none;
+    }
+    .tree-svg .row-bg {
+      fill: transparent;
+      rx: 4;
+      ry: 4;
+    }
+    .tree-svg .row-hit {
+      fill: transparent;
+      cursor: pointer;
+    }
+    .tree-svg .basename-hl {
+      fill: var(--focus-bg);
+      rx: 3;
+      ry: 3;
+    }
+    .tree-svg .scaffold {
+      fill: var(--text);
+    }
+    .tree-svg .basename {
+      fill: var(--text);
+    }
+    .tree-svg .basename.dir {
+      fill: var(--folder);
+    }
+    .tree-svg .marker.more {
+      fill: var(--muted);
+    }
+    .tree-svg .row.active .basename {
+      fill: var(--focus-fg);
+      font-weight: 700;
+    }
+    .tree-svg .route-path {
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .details-head {
+      margin-bottom: 8px;
+    }
+    .details-title {
+      margin: 0;
+      font-size: 15px;
+      color: var(--accent);
+      word-break: break-word;
+    }
+    .details-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 3px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .details-empty {
+      color: var(--muted);
+      font-style: italic;
+      margin-top: 18px;
+    }
+    .tangles { margin-top: 10px; display: grid; gap: 8px; }
+    .tangle {
+      border-left: 2px solid #32465f;
+      padding-left: 8px;
+    }
+    .tangle-main { color: var(--text); word-break: break-word; }
+    .tangle-comment {
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .status {
+      margin-top: 12px;
+      border: 1px solid var(--panel-border);
+      border-radius: 9px;
+      padding: 9px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+    }
+    .status strong { color: var(--accent); }
+    .hint { color: var(--muted); }
+    @media (max-width: 920px) {
+      .panes { grid-template-columns: 1fr; min-height: unset; }
+      body { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <div class="title">
+      <strong>tngl open</strong>
+      <span>use ↑/↓ or click a row to inspect tangles</span>
+    </div>
+    <section class="panes">
+      <section class="panel" aria-label="Tree panel">
+        <h2>TREE</h2>
+        <div class="tree-wrap">
+          <svg id="tree-svg" class="tree-svg" tabindex="0" role="listbox" aria-label="Tree view" preserveAspectRatio="xMinYMin meet"></svg>
+        </div>
+      </section>
+      <section class="panel" aria-live="polite" aria-label="Details panel">
+        <h2>DETAILS</h2>
+        <div id="details-head" class="details-head">
+          <p id="details-title" class="details-title">No Node Selected</p>
+          <p id="details-meta" class="details-meta">Use ↑/↓ or click a row in TREE to inspect tangles.</p>
+        </div>
+        <div id="tangles" class="tangles"></div>
+      </section>
+    </section>
+    <footer class="status">
+      <span><strong>SELECTED:</strong> <span id="status-selected">—</span></span>
+      <span><strong>edges:</strong> <span id="status-edges">0</span></span>
+      <span class="hint">Controls: ↑/↓ navigate, click row. Markers: ▶ out, ◀ in, ◆ ref</span>
+    </footer>
+  </main>
+  <script>
+    const HEAD_COLORS = ["#22d3ee","#4ade80","#facc15","#f472b6","#60a5fa","#fb7185","#67e8f9","#86efac"];
+    const DATA = [
+      { path: ".claude/", depth: 0, parent: "(root)", scaffold: "▾", basename: ".claude/", isDir: true, bundled: false, tangles: [] },
+      { path: ".claude/settings.local.json", depth: 1, parent: ".claude/", scaffold: "   └─", basename: "settings.local.json", isDir: false, bundled: false, tangles: [] },
+      { path: "src/", depth: 0, parent: "(root)", scaffold: "▾", basename: "src/", isDir: true, bundled: false, tangles: [{ neighbor: "src/main.rs", relation: "out", marker: "▶", comment: "crate entrypoint and CLI wiring; paired context: crate root entrypoint", head: "src/main.rs" }] },
+      { path: "src/commands/", depth: 1, parent: "src/", scaffold: "│  ├─▾", basename: "commands/", isDir: true, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "out", marker: "▶", comment: "subcommand module registry", head: "src/commands/mod.rs" }] },
+      { path: "src/commands/edit.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "edit.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "edit command module", head: "src/commands/edit.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "resolves preferred editor; paired context: configured editor resolution", head: "src/parser/config.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "resolves graph/config paths; paired context: graph/config path lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/init.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "init.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "init command module", head: "src/commands/init.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "writes default config; paired context: default config generation", head: "src/parser/config.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "serializes initial graph document; paired context: initial graph generation", head: "src/parser/graph.rs" },{ neighbor: "src/scanner/tree.rs", relation: "out", marker: "▶", comment: "scans repository tree for bootstrap nodes; paired context: bootstrap scan", head: "src/scanner/tree.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "resolves tangle directory paths; paired context: tangle path helpers", head: "src/tangle.rs" }] },
+      { path: "src/commands/inspect.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "inspect.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "inspect command module", head: "src/commands/inspect.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "traverses graph/edge model; paired context: query traversal over graph model", head: "src/graph/model.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "parses graph document for queries; paired context: query source document", head: "src/parser/graph.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "finds active repo root; paired context: repo root lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/intentionalize_orphans.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "intentionalize_orphans.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "mark-orphans command module", head: "src/commands/intentionalize_orphans.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "marks unattended isolated nodes; paired context: orphan marker updates", head: "src/parser/graph.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "locates graph file; paired context: graph path lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/list.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "list.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "list command module", head: "src/commands/list.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "iterates edge model in graph order; paired context: edge listing over model", head: "src/graph/model.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "parses graph for listing; paired context: listing source parse", head: "src/parser/graph.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "locates graph file; paired context: graph path lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/mod.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "mod.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/", relation: "in", marker: "◀", comment: "subcommand module registry", head: "src/commands/mod.rs" },{ neighbor: "src/commands/edit.rs", relation: "out", marker: "▶", comment: "edit command module", head: "src/commands/edit.rs" },{ neighbor: "src/commands/init.rs", relation: "out", marker: "▶", comment: "init command module", head: "src/commands/init.rs" },{ neighbor: "src/commands/inspect.rs", relation: "out", marker: "▶", comment: "inspect command module", head: "src/commands/inspect.rs" },{ neighbor: "src/commands/intentionalize_orphans.rs", relation: "out", marker: "▶", comment: "mark-orphans command module", head: "src/commands/intentionalize_orphans.rs" },{ neighbor: "src/commands/list.rs", relation: "out", marker: "▶", comment: "list command module", head: "src/commands/list.rs" },{ neighbor: "src/commands/open.rs", relation: "out", marker: "▶", comment: "static HTML export/open command module", head: "src/commands/open.rs" },{ neighbor: "src/commands/status.rs", relation: "out", marker: "▶", comment: "status command module", head: "src/commands/status.rs" },{ neighbor: "src/commands/update.rs", relation: "out", marker: "▶", comment: "update command module", head: "src/commands/update.rs" },{ neighbor: "src/commands/view.rs", relation: "out", marker: "▶", comment: "view and setup command module", head: "src/commands/view.rs" },{ neighbor: "src/main.rs", relation: "ref", marker: "◆", comment: "imported by CLI for command dispatch; paired context: CLI command wiring and dispatch", head: "src/main.rs" }] },
+      { path: "src/commands/open.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "open.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "static HTML export/open command module", head: "src/commands/open.rs" },{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "dispatched by CLI to export map.html and open it in a browser", head: "src/commands/open.rs" }] },
+      { path: "src/commands/status.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "status.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documents audit/report semantics", head: "src/commands/status.rs" },{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "status command module", head: "src/commands/status.rs" },{ neighbor: "src/commands/update.rs", relation: "out", marker: "▶", comment: "reuses update preview logic", head: "src/commands/update.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "traverses edge state; paired context: drift checks over model", head: "src/graph/model.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "reads status warning settings; paired context: reads status flags", head: "src/parser/config.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "parses tags and graph content; paired context: tag/query parse", head: "src/parser/graph.rs" },{ neighbor: "src/scanner/diff.rs", relation: "out", marker: "▶", comment: "computes filesystem-vs-graph differences; paired context: status diffing", head: "src/scanner/diff.rs" },{ neighbor: "src/scanner/tree.rs", relation: "out", marker: "▶", comment: "scans filesystem state; paired context: status scan", head: "src/scanner/tree.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "locates graph/config files; paired context: graph/config path lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/update.rs", depth: 2, parent: "src/commands/", scaffold: "│  │  ├─", basename: "update.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documents reconcile semantics", head: "src/commands/update.rs" },{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "update command module", head: "src/commands/update.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "reuses update preview logic", head: "src/commands/update.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "applies graph-level mutations; paired context: mutation target model", head: "src/graph/model.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "reads reconcile behavior; paired context: reads update behavior", head: "src/parser/config.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "mutates graph document; paired context: reconcile mutations", head: "src/parser/graph.rs" },{ neighbor: "src/scanner/diff.rs", relation: "out", marker: "▶", comment: "computes additions and removals; paired context: update reconciliation diffing", head: "src/scanner/diff.rs" },{ neighbor: "src/scanner/tree.rs", relation: "out", marker: "▶", comment: "scans current filesystem nodes; paired context: reconciliation scan", head: "src/scanner/tree.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "resolves graph/config file paths; paired context: graph/config path lookup", head: "src/tangle.rs" }] },
+      { path: "src/commands/view.rs", depth: 2, parent: "src/commands/", scaffold: "│     └─", basename: "view.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documents view/setup entrypoints", head: "src/commands/view.rs" },{ neighbor: "src/commands/mod.rs", relation: "in", marker: "◀", comment: "view and setup command module", head: "src/commands/view.rs" },{ neighbor: "src/tui/canvas.rs", relation: "out", marker: "▶", comment: "launches interactive TUI; paired context: launched by view/setup commands", head: "src/tui/canvas.rs" }] },
+      { path: "src/graph/", depth: 1, parent: "src/", scaffold: "│  ├─▾", basename: "graph/", isDir: true, bundled: false, tangles: [{ neighbor: "src/graph/mod.rs", relation: "out", marker: "▶", comment: "graph namespace module", head: "src/graph/mod.rs" }] },
+      { path: "src/graph/mod.rs", depth: 2, parent: "src/graph/", scaffold: "│  │  ├─", basename: "mod.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/graph/", relation: "in", marker: "◀", comment: "graph namespace module", head: "src/graph/mod.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "exports graph data model", head: "src/graph/model.rs" },{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "linked from crate root; paired context: graph module linkage", head: "src/graph/mod.rs" }] },
+      { path: "src/graph/model.rs", depth: 2, parent: "src/graph/", scaffold: "│     └─", basename: "model.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/inspect.rs", relation: "in", marker: "◀", comment: "traverses graph/edge model; paired context: query traversal over graph model", head: "src/graph/model.rs" },{ neighbor: "src/commands/list.rs", relation: "in", marker: "◀", comment: "iterates edge model in graph order; paired context: edge listing over model", head: "src/graph/model.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "traverses edge state; paired context: drift checks over model", head: "src/graph/model.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "applies graph-level mutations; paired context: mutation target model", head: "src/graph/model.rs" },{ neighbor: "src/graph/mod.rs", relation: "in", marker: "◀", comment: "exports graph data model", head: "src/graph/model.rs" },{ neighbor: "src/parser/graph.rs", relation: "in", marker: "◀", comment: "parser round-trips into model; paired context: parser \u003C-\u003E model conversion", head: "src/graph/model.rs" },{ neighbor: "src/scanner/diff.rs", relation: "in", marker: "◀", comment: "diff against graph model", head: "src/graph/model.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "view/edit runtime model; paired context: in-memory graph state", head: "src/graph/model.rs" },{ neighbor: "src/tui/render.rs", relation: "in", marker: "◀", comment: "rendering relation kinds/icons; paired context: EdgeKind drives relation rendering", head: "src/graph/model.rs" }] },
+      { path: "src/parser/", depth: 1, parent: "src/", scaffold: "│  ├─▾", basename: "parser/", isDir: true, bundled: false, tangles: [{ neighbor: "src/parser/mod.rs", relation: "out", marker: "▶", comment: "parser namespace module", head: "src/parser/mod.rs" }] },
+      { path: "src/parser/config.rs", depth: 2, parent: "src/parser/", scaffold: "│  │  ├─", basename: "config.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documents config keys and setup behavior", head: "src/parser/config.rs" },{ neighbor: "src/commands/edit.rs", relation: "in", marker: "◀", comment: "resolves preferred editor; paired context: configured editor resolution", head: "src/parser/config.rs" },{ neighbor: "src/commands/init.rs", relation: "in", marker: "◀", comment: "writes default config; paired context: default config generation", head: "src/parser/config.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "reads status warning settings; paired context: reads status flags", head: "src/parser/config.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "reads reconcile behavior; paired context: reads update behavior", head: "src/parser/config.rs" },{ neighbor: "src/parser/mod.rs", relation: "in", marker: "◀", comment: "config parser export; paired context: exports config parser", head: "src/parser/config.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "runtime settings state; paired context: reads/writes config values", head: "src/parser/config.rs" },{ neighbor: "src/tui/settings.rs", relation: "in", marker: "◀", comment: "setup panel serialization; paired context: serializes setup toggles into config", head: "src/parser/config.rs" }] },
+      { path: "src/parser/graph.rs", depth: 2, parent: "src/parser/", scaffold: "│  │  ├─", basename: "graph.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/init.rs", relation: "in", marker: "◀", comment: "serializes initial graph document; paired context: initial graph generation", head: "src/parser/graph.rs" },{ neighbor: "src/commands/inspect.rs", relation: "in", marker: "◀", comment: "parses graph document for queries; paired context: query source document", head: "src/parser/graph.rs" },{ neighbor: "src/commands/intentionalize_orphans.rs", relation: "in", marker: "◀", comment: "marks unattended isolated nodes; paired context: orphan marker updates", head: "src/parser/graph.rs" },{ neighbor: "src/commands/list.rs", relation: "in", marker: "◀", comment: "parses graph for listing; paired context: listing source parse", head: "src/parser/graph.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "parses tags and graph content; paired context: tag/query parse", head: "src/parser/graph.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "mutates graph document; paired context: reconcile mutations", head: "src/parser/graph.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "parser round-trips into model; paired context: parser \u003C-\u003E model conversion", head: "src/graph/model.rs" },{ neighbor: "src/parser/mod.rs", relation: "in", marker: "◀", comment: "graph parser export; paired context: exports graph parser", head: "src/parser/graph.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "view writes and normalization; paired context: persists graph edits", head: "src/parser/graph.rs" }] },
+      { path: "src/parser/mod.rs", depth: 2, parent: "src/parser/", scaffold: "│     └─", basename: "mod.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "linked from crate root; paired context: parser module linkage", head: "src/parser/mod.rs" },{ neighbor: "src/parser/", relation: "in", marker: "◀", comment: "parser namespace module", head: "src/parser/mod.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "config parser export; paired context: exports config parser", head: "src/parser/config.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "graph parser export; paired context: exports graph parser", head: "src/parser/graph.rs" }] },
+      { path: "src/scanner/", depth: 1, parent: "src/", scaffold: "│  ├─▾", basename: "scanner/", isDir: true, bundled: false, tangles: [{ neighbor: "src/scanner/mod.rs", relation: "out", marker: "▶", comment: "scanner namespace module", head: "src/scanner/mod.rs" }] },
+      { path: "src/scanner/diff.rs", depth: 2, parent: "src/scanner/", scaffold: "│  │  ├─", basename: "diff.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "computes filesystem-vs-graph differences; paired context: status diffing", head: "src/scanner/diff.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "computes additions and removals; paired context: update reconciliation diffing", head: "src/scanner/diff.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "diff against graph model", head: "src/graph/model.rs" },{ neighbor: "src/scanner/mod.rs", relation: "in", marker: "◀", comment: "diff scanner export; paired context: exports diff scanner", head: "src/scanner/diff.rs" }] },
+      { path: "src/scanner/mod.rs", depth: 2, parent: "src/scanner/", scaffold: "│  │  ├─", basename: "mod.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "linked from crate root; paired context: scanner module linkage", head: "src/scanner/mod.rs" },{ neighbor: "src/scanner/", relation: "in", marker: "◀", comment: "scanner namespace module", head: "src/scanner/mod.rs" },{ neighbor: "src/scanner/diff.rs", relation: "out", marker: "▶", comment: "diff scanner export; paired context: exports diff scanner", head: "src/scanner/diff.rs" },{ neighbor: "src/scanner/tree.rs", relation: "out", marker: "▶", comment: "exports tree scanner; paired context: tree scanner export", head: "src/scanner/tree.rs" }] },
+      { path: "src/scanner/tree.rs", depth: 2, parent: "src/scanner/", scaffold: "│     └─", basename: "tree.rs", isDir: false, bundled: false, tangles: [{ neighbor: ".gitignore", relation: "in", marker: "◀", comment: "ignore rules affect scan output; paired context: ignore patterns influence scanning", head: "src/scanner/tree.rs" },{ neighbor: "src/commands/init.rs", relation: "in", marker: "◀", comment: "scans repository tree for bootstrap nodes; paired context: bootstrap scan", head: "src/scanner/tree.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "scans filesystem state; paired context: status scan", head: "src/scanner/tree.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "scans current filesystem nodes; paired context: reconciliation scan", head: "src/scanner/tree.rs" },{ neighbor: "src/scanner/mod.rs", relation: "in", marker: "◀", comment: "exports tree scanner; paired context: tree scanner export", head: "src/scanner/tree.rs" }] },
+      { path: "src/tui/", depth: 1, parent: "src/", scaffold: "│  ├─▾", basename: "tui/", isDir: true, bundled: false, tangles: [{ neighbor: "src/tui/mod.rs", relation: "out", marker: "▶", comment: "tui namespace module", head: "src/tui/mod.rs" }] },
+      { path: "src/tui/canvas.rs", depth: 2, parent: "src/tui/", scaffold: "│  │  ├─", basename: "canvas.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "describes TUI workflows and behaviors", head: "src/tui/canvas.rs" },{ neighbor: "src/commands/view.rs", relation: "in", marker: "◀", comment: "launches interactive TUI; paired context: launched by view/setup commands", head: "src/tui/canvas.rs" },{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "view/edit runtime model; paired context: in-memory graph state", head: "src/graph/model.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "runtime settings state; paired context: reads/writes config values", head: "src/parser/config.rs" },{ neighbor: "src/parser/graph.rs", relation: "out", marker: "▶", comment: "view writes and normalization; paired context: persists graph edits", head: "src/parser/graph.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "resolves repo graph/config paths; paired context: view persist path lookup", head: "src/tangle.rs" },{ neighbor: "src/tui/input.rs", relation: "out", marker: "▶", comment: "maps keys to actions; paired context: action mapping consumed by state machine", head: "src/tui/input.rs" },{ neighbor: "src/tui/mod.rs", relation: "in", marker: "◀", comment: "exports canvas module", head: "src/tui/canvas.rs" },{ neighbor: "src/tui/render.rs", relation: "out", marker: "▶", comment: "draws tree/details/status/help; paired context: receives render data from app state", head: "src/tui/render.rs" },{ neighbor: "src/tui/settings.rs", relation: "out", marker: "▶", comment: "setup popup behavior; paired context: setup panel host and event loop", head: "src/tui/settings.rs" }] },
+      { path: "src/tui/input.rs", depth: 2, parent: "src/tui/", scaffold: "│  │  ├─", basename: "input.rs", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documents active keymap", head: "src/tui/input.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "maps keys to actions; paired context: action mapping consumed by state machine", head: "src/tui/input.rs" },{ neighbor: "src/tui/mod.rs", relation: "in", marker: "◀", comment: "exports input module", head: "src/tui/input.rs" }] },
+      { path: "src/tui/mod.rs", depth: 2, parent: "src/tui/", scaffold: "│  │  ├─", basename: "mod.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "linked from crate root; paired context: tui module linkage", head: "src/tui/mod.rs" },{ neighbor: "src/tui/", relation: "in", marker: "◀", comment: "tui namespace module", head: "src/tui/mod.rs" },{ neighbor: "src/tui/canvas.rs", relation: "out", marker: "▶", comment: "exports canvas module", head: "src/tui/canvas.rs" },{ neighbor: "src/tui/input.rs", relation: "out", marker: "▶", comment: "exports input module", head: "src/tui/input.rs" },{ neighbor: "src/tui/render.rs", relation: "out", marker: "▶", comment: "exports render module", head: "src/tui/render.rs" },{ neighbor: "src/tui/settings.rs", relation: "out", marker: "▶", comment: "exports settings module", head: "src/tui/settings.rs" }] },
+      { path: "src/tui/render.rs", depth: 2, parent: "src/tui/", scaffold: "│  │  ├─", basename: "render.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/graph/model.rs", relation: "out", marker: "▶", comment: "rendering relation kinds/icons; paired context: EdgeKind drives relation rendering", head: "src/graph/model.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "draws tree/details/status/help; paired context: receives render data from app state", head: "src/tui/render.rs" },{ neighbor: "src/tui/mod.rs", relation: "in", marker: "◀", comment: "exports render module", head: "src/tui/render.rs" }] },
+      { path: "src/tui/settings.rs", depth: 2, parent: "src/tui/", scaffold: "│     └─", basename: "settings.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "setup panel serialization; paired context: serializes setup toggles into config", head: "src/parser/config.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "setup popup behavior; paired context: setup panel host and event loop", head: "src/tui/settings.rs" },{ neighbor: "src/tui/mod.rs", relation: "in", marker: "◀", comment: "exports settings module", head: "src/tui/settings.rs" }] },
+      { path: "src/main.rs", depth: 1, parent: "src/", scaffold: "│  ├─", basename: "main.rs", isDir: false, bundled: false, tangles: [{ neighbor: "Cargo.toml", relation: "in", marker: "◀", comment: "binary target points here; paired context: binary entrypoint declaration", head: "src/main.rs" },{ neighbor: "src/", relation: "in", marker: "◀", comment: "crate entrypoint and CLI wiring; paired context: crate root entrypoint", head: "src/main.rs" },{ neighbor: "src/commands/mod.rs", relation: "ref", marker: "◆", comment: "imported by CLI for command dispatch; paired context: CLI command wiring and dispatch", head: "src/commands/mod.rs" },{ neighbor: "src/commands/open.rs", relation: "out", marker: "▶", comment: "dispatched by CLI to export map.html and open it in a browser", head: "src/commands/open.rs" },{ neighbor: "src/graph/mod.rs", relation: "out", marker: "▶", comment: "linked from crate root; paired context: graph module linkage", head: "src/graph/mod.rs" },{ neighbor: "src/parser/mod.rs", relation: "out", marker: "▶", comment: "linked from crate root; paired context: parser module linkage", head: "src/parser/mod.rs" },{ neighbor: "src/scanner/mod.rs", relation: "out", marker: "▶", comment: "linked from crate root; paired context: scanner module linkage", head: "src/scanner/mod.rs" },{ neighbor: "src/tangle.rs", relation: "out", marker: "▶", comment: "repo root and tangle path helpers; paired context: root discovery plumbing", head: "src/tangle.rs" },{ neighbor: "src/tui/mod.rs", relation: "out", marker: "▶", comment: "linked from crate root; paired context: tui module linkage", head: "src/tui/mod.rs" }] },
+      { path: "src/tangle.rs", depth: 1, parent: "src/", scaffold: "   └─", basename: "tangle.rs", isDir: false, bundled: false, tangles: [{ neighbor: "src/commands/edit.rs", relation: "in", marker: "◀", comment: "resolves graph/config paths; paired context: graph/config path lookup", head: "src/tangle.rs" },{ neighbor: "src/commands/init.rs", relation: "in", marker: "◀", comment: "resolves tangle directory paths; paired context: tangle path helpers", head: "src/tangle.rs" },{ neighbor: "src/commands/inspect.rs", relation: "in", marker: "◀", comment: "finds active repo root; paired context: repo root lookup", head: "src/tangle.rs" },{ neighbor: "src/commands/intentionalize_orphans.rs", relation: "in", marker: "◀", comment: "locates graph file; paired context: graph path lookup", head: "src/tangle.rs" },{ neighbor: "src/commands/list.rs", relation: "in", marker: "◀", comment: "locates graph file; paired context: graph path lookup", head: "src/tangle.rs" },{ neighbor: "src/commands/status.rs", relation: "in", marker: "◀", comment: "locates graph/config files; paired context: graph/config path lookup", head: "src/tangle.rs" },{ neighbor: "src/commands/update.rs", relation: "in", marker: "◀", comment: "resolves graph/config file paths; paired context: graph/config path lookup", head: "src/tangle.rs" },{ neighbor: "src/main.rs", relation: "in", marker: "◀", comment: "repo root and tangle path helpers; paired context: root discovery plumbing", head: "src/tangle.rs" },{ neighbor: "src/tui/canvas.rs", relation: "in", marker: "◀", comment: "resolves repo graph/config paths; paired context: view persist path lookup", head: "src/tangle.rs" }] },
+      { path: ".gitignore", depth: 0, parent: "(root)", scaffold: "", basename: ".gitignore", isDir: false, bundled: false, tangles: [{ neighbor: "README.md", relation: "in", marker: "◀", comment: "documented repo hygiene", head: ".gitignore" },{ neighbor: "src/scanner/tree.rs", relation: "out", marker: "▶", comment: "ignore rules affect scan output; paired context: ignore patterns influence scanning", head: "src/scanner/tree.rs" }] },
+      { path: "Cargo.lock", depth: 0, parent: "(root)", scaffold: "", basename: "Cargo.lock", isDir: false, bundled: false, tangles: [] },
+      { path: "Cargo.toml", depth: 0, parent: "(root)", scaffold: "", basename: "Cargo.toml", isDir: false, bundled: false, tangles: [{ neighbor: "src/main.rs", relation: "out", marker: "▶", comment: "binary target points here; paired context: binary entrypoint declaration", head: "src/main.rs" }] },
+      { path: "README.md", depth: 0, parent: "(root)", scaffold: "", basename: "README.md", isDir: false, bundled: false, tangles: [{ neighbor: ".gitignore", relation: "out", marker: "▶", comment: "documented repo hygiene", head: ".gitignore" },{ neighbor: "src/commands/status.rs", relation: "out", marker: "▶", comment: "documents audit/report semantics", head: "src/commands/status.rs" },{ neighbor: "src/commands/update.rs", relation: "out", marker: "▶", comment: "documents reconcile semantics", head: "src/commands/update.rs" },{ neighbor: "src/commands/view.rs", relation: "out", marker: "▶", comment: "documents view/setup entrypoints", head: "src/commands/view.rs" },{ neighbor: "src/parser/config.rs", relation: "out", marker: "▶", comment: "documents config keys and setup behavior", head: "src/parser/config.rs" },{ neighbor: "src/tui/canvas.rs", relation: "out", marker: "▶", comment: "describes TUI workflows and behaviors", head: "src/tui/canvas.rs" },{ neighbor: "src/tui/input.rs", relation: "out", marker: "▶", comment: "documents active keymap", head: "src/tui/input.rs" }] },
+    ];
+
+    const rowByPath = new Map(DATA.map((node, idx) => [node.path, idx]));
+    const treeSvg = document.getElementById("tree-svg");
+    const treePanel = treeSvg?.closest(".panel") || null;
+    const detailsTitle = document.getElementById("details-title");
+    const detailsMeta = document.getElementById("details-meta");
+    const tanglesEl = document.getElementById("tangles");
+    const statusSelected = document.getElementById("status-selected");
+    const statusEdges = document.getElementById("status-edges");
+
+    const FONT = "15px SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
+    const ROW_HEIGHT = 18;
+    const TOP_PAD = 8;
+    const LEFT_PAD = 8;
+    const BASELINE_OFFSET = 13;
+
+    const measureCanvas = document.createElement("canvas");
+    const measureCtx = measureCanvas.getContext("2d");
+    if (measureCtx) {
+      measureCtx.font = FONT;
+    }
+
+    function scaffoldTight(scaffold) {
+      return scaffold.replace(/\s+$/, "");
+    }
+
+    function charCount(text) {
+      return Array.from(text).length;
+    }
+
+    const cellWidth = (() => {
+      if (!measureCtx) return 8.6;
+      const measured = measureCtx.measureText("M").width;
+      return Number.isFinite(measured) && measured > 0 ? measured : 8.6;
+    })();
+    const LANE_STEP_COLS = 4;
+    const MIN_WIDTH_COLS = 80;
+
+    const scaffoldByRow = DATA.map((node) => scaffoldTight(node.scaffold));
+    const scaffoldColsByRow = scaffoldByRow.map((scaffold) => charCount(scaffold));
+    const basenameColsByRow = DATA.map((node) => charCount(node.basename));
+    const fullRowColsByRow = DATA.map(
+      (_, idx) => scaffoldColsByRow[idx] + basenameColsByRow[idx],
+    );
+
+    let selectedIndex = DATA.length > 0 ? 0 : -1;
+
+    function colLeft(col) {
+      return LEFT_PAD + col * cellWidth;
+    }
+
+    function colCenter(col) {
+      return colLeft(col) + cellWidth * 0.5;
+    }
+
+    function rowTop(idx) {
+      return TOP_PAD + idx * ROW_HEIGHT;
+    }
+
+    function rowBaseline(idx) {
+      return rowTop(idx) + BASELINE_OFFSET;
+    }
+
+    function svgEl(name, attrs = {}, text) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+      for (const [key, value] of Object.entries(attrs)) {
+        el.setAttribute(key, String(value));
+      }
+      if (typeof text === "string") {
+        el.textContent = text;
+      }
+      return el;
+    }
+
+    function ensureRowVisible(idx) {
+      if (!treePanel || idx < 0) return;
+      const top = rowTop(idx);
+      const bottom = top + ROW_HEIGHT;
+      if (top < treePanel.scrollTop) {
+        treePanel.scrollTop = top;
+      } else if (bottom > treePanel.scrollTop + treePanel.clientHeight) {
+        treePanel.scrollTop = bottom - treePanel.clientHeight;
+      }
+    }
+
+    function rangesOverlap(a, b) {
+      return !(a.high < b.low || b.high < a.low);
+    }
+
+    function buildRoutes(node) {
+      if (!node) return [];
+      const routes = [];
+      node.tangles.forEach((tangle, idx) => {
+        const headPath = tangle.head;
+        const footPath = headPath === node.path ? tangle.neighbor : node.path;
+        const footRow = rowByPath.get(footPath);
+        const headRow = rowByPath.get(headPath);
+        if (footRow === undefined || headRow === undefined || footRow === headRow) {
+          return;
+        }
+        routes.push({
+          footRow,
+          headRow,
+          low: Math.min(footRow, headRow),
+          high: Math.max(footRow, headRow),
+          marker: tangle.marker,
+          color: HEAD_COLORS[idx % HEAD_COLORS.length],
+          rightCol: 0,
+        });
+      });
+
+      routes.sort((a, b) => {
+        const spanA = a.high - a.low;
+        const spanB = b.high - b.low;
+        return spanA - spanB || a.low - b.low || a.high - b.high;
+      });
+      const placed = [];
+      for (const route of routes) {
+        let maxCol = 0;
+        for (let row = route.low; row <= route.high; row += 1) {
+          const fullLeft = fullRowColsByRow[row] ?? 0;
+          const overhead = row === route.footRow || row === route.headRow ? 4 : 1;
+          maxCol = Math.max(maxCol, fullLeft + overhead);
+        }
+        const minByOverlap = placed
+          .filter((inner) => rangesOverlap(inner, route))
+          .reduce((acc, inner) => Math.max(acc, inner.rightCol + LANE_STEP_COLS), 0);
+        route.rightCol = Math.max(maxCol, minByOverlap);
+        placed.push(route);
+      }
+
+      return routes;
+    }
+
+    function computeEndpointCols(routes) {
+      const endpoints = new Map();
+      for (let row = 0; row < DATA.length; row += 1) {
+        const active = [];
+        routes.forEach((route, routeIdx) => {
+          if (row >= route.low && row <= route.high) {
+            active.push({
+              route,
+              routeIdx,
+              endpoint: row === route.footRow || row === route.headRow,
+            });
+          }
+        });
+        active.sort((a, b) => a.route.rightCol - b.route.rightCol);
+
+        let currentCol = fullRowColsByRow[row] ?? 0;
+        for (const item of active) {
+          if (item.endpoint) {
+            const markerCol = currentCol + 1;
+            const endpoint = endpoints.get(item.routeIdx) || {};
+            if (row === item.route.footRow) {
+              endpoint.footCol = markerCol;
+            }
+            if (row === item.route.headRow) {
+              endpoint.headCol = markerCol;
+            }
+            endpoints.set(item.routeIdx, endpoint);
+          }
+          currentCol = item.route.rightCol + 1;
+        }
+      }
+      return endpoints;
+    }
+
+    function renderTangles(node) {
+      tanglesEl.replaceChildren();
+      if (!node || node.tangles.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "details-empty";
+        empty.textContent = "(none)";
+        tanglesEl.appendChild(empty);
+        return;
+      }
+
+      node.tangles.forEach((tangle, idx) => {
+        const color = HEAD_COLORS[idx % HEAD_COLORS.length];
+        const card = document.createElement("div");
+        card.className = "tangle relation-" + tangle.relation;
+        card.style.borderLeftColor = color;
+
+        const main = document.createElement("div");
+        main.className = "tangle-main";
+        main.textContent = tangle.marker + " [" + tangle.relation + "] " + tangle.neighbor;
+        main.style.color = color;
+        card.appendChild(main);
+
+        if (tangle.comment && tangle.comment.trim().length > 0) {
+          const comment = document.createElement("div");
+          comment.className = "tangle-comment";
+          comment.textContent = tangle.comment;
+          card.appendChild(comment);
+        }
+
+        tanglesEl.appendChild(card);
+      });
+    }
+
+    function renderTree(node) {
+      if (!treeSvg) return;
+      treeSvg.replaceChildren();
+
+      if (DATA.length === 0) {
+        const height = 76;
+        treeSvg.setAttribute("viewBox", "0 0 640 " + height);
+        treeSvg.setAttribute("height", String(height));
+        treeSvg.appendChild(
+          svgEl(
+            "text",
+            { x: 0, y: 30, class: "scaffold" },
+            "No nodes in graph.",
+          ),
+        );
+        return;
+      }
+
+      const routes = buildRoutes(node);
+      const maxTextCols = fullRowColsByRow.reduce((acc, cols) => Math.max(acc, cols), 0);
+      const maxLaneCol = routes.reduce((acc, route) => Math.max(acc, route.rightCol), 0);
+      const totalCols = Math.max(MIN_WIDTH_COLS, maxTextCols + 6, maxLaneCol + 2);
+      const width = Math.max(640, colLeft(totalCols + 1));
+      const height = TOP_PAD * 2 + DATA.length * ROW_HEIGHT;
+      treeSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
+      treeSvg.setAttribute("height", String(height));
+
+      const endpointCols = computeEndpointCols(routes);
+      const routeLayer = svgEl("g");
+      routes
+        .map((route, routeIdx) => ({ route, routeIdx }))
+        .sort((a, b) => a.route.rightCol - b.route.rightCol)
+        .forEach(({ route, routeIdx }) => {
+        const laneX = colCenter(route.rightCol);
+        const footY = rowTop(route.footRow) + ROW_HEIGHT / 2;
+        const headY = rowTop(route.headRow) + ROW_HEIGHT / 2;
+        const endpoint = endpointCols.get(routeIdx) || {};
+        const footMarkerCol = endpoint.footCol ?? (fullRowColsByRow[route.footRow] ?? 0) + 1;
+        const headMarkerCol = endpoint.headCol ?? (fullRowColsByRow[route.headRow] ?? 0) + 1;
+        const footCx = colCenter(footMarkerCol);
+        const headCx = colCenter(headMarkerCol);
+        const markerW = Math.max(9, cellWidth * 1.02);
+        const footR = markerW * 0.23;
+        const footJoinX = footCx + footR;
+        let headJoinX = headCx + markerW * 0.35;
+        const routeGroup = svgEl("g");
+
+        // Foot marker: open circle.
+        routeGroup.appendChild(
+          svgEl("circle", {
+            cx: footCx,
+            cy: footY,
+            r: footR,
+            fill: "none",
+            stroke: route.color,
+            "stroke-width": 1.8,
+          }),
+        );
+
+        if (route.marker === "◆") {
+          // Undirected head marker: diamond.
+          const cx = headCx;
+          const cy = headY;
+          const rx = markerW * 0.38;
+          const ry = markerW * 0.32;
+          routeGroup.appendChild(
+            svgEl("polygon", {
+              points:
+                cx +
+                "," +
+                (cy - ry) +
+                " " +
+                (cx + rx) +
+                "," +
+                cy +
+                " " +
+                cx +
+                "," +
+                (cy + ry) +
+                " " +
+                (cx - rx) +
+                "," +
+                cy,
+              fill: route.color,
+            }),
+          );
+          headJoinX = cx + rx;
+        } else {
+          // Directed head marker: left-pointing triangle.
+          const tipX = headCx - markerW * 0.46;
+          const tailX = headCx + markerW * 0.42;
+          const halfH = markerW * 0.34;
+          routeGroup.appendChild(
+            svgEl("polygon", {
+              points:
+                tipX +
+                "," +
+                headY +
+                " " +
+                tailX +
+                "," +
+                (headY - halfH) +
+                " " +
+                tailX +
+                "," +
+                (headY + halfH),
+              fill: route.color,
+            }),
+          );
+          headJoinX = tailX;
+        }
+
+        const path = svgEl("path", {
+          class: "route-path",
+          stroke: route.color,
+          d:
+            "M " +
+            footJoinX +
+            " " +
+            footY +
+            " L " +
+            laneX +
+            " " +
+            footY +
+            " L " +
+            laneX +
+            " " +
+            headY +
+            " L " +
+            headJoinX +
+            " " +
+            headY,
+        });
+        routeGroup.insertBefore(path, routeGroup.firstChild);
+        routeLayer.appendChild(routeGroup);
+      });
+      treeSvg.appendChild(routeLayer);
+
+      DATA.forEach((row, idx) => {
+        const group = svgEl("g", {
+          class: idx === selectedIndex ? "row active" : "row",
+          "data-index": idx,
+        });
+        const yTop = rowTop(idx);
+        const yBase = rowBaseline(idx);
+        const baseX = LEFT_PAD;
+        const basenameX = baseX + scaffoldColsByRow[idx] * cellWidth;
+
+        group.appendChild(
+          svgEl("rect", {
+            class: "row-bg",
+            x: 0,
+            y: yTop,
+            width,
+            height: ROW_HEIGHT - 1,
+          }),
+        );
+        const rowText = svgEl("text", { x: baseX, y: yBase, "xml:space": "preserve" });
+        const scaffoldSpan = svgEl("tspan", { class: "scaffold" }, scaffoldByRow[idx]);
+        const basenameSpan = svgEl(
+          "tspan",
+          { class: row.isDir ? "basename dir" : "basename" },
+          row.basename,
+        );
+        rowText.appendChild(scaffoldSpan);
+        rowText.appendChild(basenameSpan);
+        group.appendChild(rowText);
+
+        if (row.bundled) {
+          const underlineColor = idx === selectedIndex ? "#131313" : "#39c5f6";
+          const nameWidth = basenameColsByRow[idx] * cellWidth;
+          group.appendChild(
+            svgEl("line", {
+              x1: basenameX,
+              y1: yBase + 2,
+              x2: basenameX + nameWidth,
+              y2: yBase + 2,
+              stroke: underlineColor,
+              "stroke-dasharray": "1.5 2.2",
+              "stroke-width": 1,
+            }),
+          );
+        }
+
+        const hit = svgEl("rect", {
+          class: "row-hit",
+          x: 0,
+          y: yTop,
+          width,
+          height: ROW_HEIGHT - 1,
+        });
+        hit.addEventListener("click", () => {
+          setSelectedIndex(idx, true);
+        });
+        group.appendChild(hit);
+        treeSvg.appendChild(group);
+
+        if (idx === selectedIndex) {
+          const highlightWidth = Math.max(1, basenameColsByRow[idx] * cellWidth);
+          group.insertBefore(
+            svgEl("rect", {
+              class: "basename-hl",
+              x: basenameX,
+              y: yTop + 1,
+              width: highlightWidth,
+              height: ROW_HEIGHT - 3,
+            }),
+            rowText,
+          );
+        }
+      });
+    }
+
+    function pinSceneHeight() {
+      const panes = document.querySelector(".panes");
+      const detailsPanel = tanglesEl?.closest(".panel");
+      if (!panes || !detailsPanel) return;
+
+      const treeNeeded = TOP_PAD * 2 + DATA.length * ROW_HEIGHT + 92;
+      let maxDetailsNeeded = detailsPanel.scrollHeight;
+
+      if (DATA.length > 0) {
+        const current = DATA[Math.max(0, Math.min(DATA.length - 1, selectedIndex))];
+        for (const node of DATA) {
+          updateDetails(node);
+          maxDetailsNeeded = Math.max(maxDetailsNeeded, detailsPanel.scrollHeight);
+        }
+        updateDetails(current);
+      } else {
+        updateDetails(null);
+      }
+
+      const sceneHeight = Math.max(treeNeeded, maxDetailsNeeded + 12);
+      panes.style.height = sceneHeight + "px";
+      panes.style.minHeight = sceneHeight + "px";
+    }
+
+    function updateDetails(node) {
+      if (!node) {
+        detailsTitle.textContent = "No Node Selected";
+        detailsMeta.textContent = "Use ↑/↓ or click a row in TREE to inspect tangles.";
+        statusSelected.textContent = "—";
+        statusEdges.textContent = "0";
+        renderTangles(null);
+        return;
+      }
+      detailsTitle.textContent = node.path;
+      detailsMeta.textContent = "depth: " + node.depth + "   parent: " + node.parent;
+      statusSelected.textContent = node.path;
+      statusEdges.textContent = String(node.tangles.length);
+      renderTangles(node);
+    }
+
+    function setSelectedIndex(nextIdx, focusTree) {
+      if (DATA.length === 0) {
+        selectedIndex = -1;
+        updateDetails(null);
+        renderTree(null);
+        return;
+      }
+      const clamped = Math.max(0, Math.min(DATA.length - 1, nextIdx));
+      if (selectedIndex === clamped && !focusTree) {
+        return;
+      }
+      selectedIndex = clamped;
+      const node = DATA[selectedIndex];
+      updateDetails(node);
+      renderTree(node);
+      ensureRowVisible(selectedIndex);
+      if (focusTree && treeSvg) {
+        treeSvg.focus({ preventScroll: true });
+      }
+    }
+
+    function moveSelection(delta) {
+      if (DATA.length === 0) return;
+      const current = selectedIndex < 0 ? 0 : selectedIndex;
+      setSelectedIndex(current + delta, true);
+    }
+
+    function onKeydown(event) {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveSelection(1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSelection(-1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setSelectedIndex(0, true);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setSelectedIndex(DATA.length - 1, true);
+      }
+    }
+
+    window.addEventListener("keydown", onKeydown);
+    treeSvg?.addEventListener("click", () => treeSvg.focus({ preventScroll: true }));
+    pinSceneHeight();
+
+    if (DATA.length > 0) {
+      setSelectedIndex(0, true);
+    } else {
+      updateDetails(null);
+      renderTree(null);
+    }
+  </script>
+</body>
+</html>

@@ -15,10 +15,7 @@ auto_reveal_links: true
 git_hooks: true
 
 # Preferred editor for `tngl edit` (falls back to $VISUAL, then $EDITOR)
-# editor: nvim
+editor: 
 
 # Warn in `tngl status` when an edge has an empty label/comment
 warn_uncommented_edges: true
-
-# On `tngl update`, tag new files and folders as [orphan]
-mark_new_as_orphans: false
